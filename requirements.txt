@@ -1,2 +1,6 @@
-pip install gunicorn psycopg2-binary
-pip freeze > requirements.txt
+Flask
+Flask-SQLAlchemy
+requests
+Pillow
+gunicorn
+psycopg2-binary
