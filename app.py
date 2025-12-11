@@ -116,132 +116,131 @@ def scrape_books_com_tw(isbn):
         print(f">>> [爬蟲] 博客來錯誤: {e}")
         return None
 
-# ====== 🕷️ 爬蟲 2：國家圖書館 (NCL ISBN Net) - 進階版 ======
+# ====== 🕷️ 爬蟲 2：國家圖書館 (NCL ISBN Net) - 強力修正版 ======
 def scrape_ncl_isbn(isbn):
-    print(f">>> [爬蟲] 查詢國圖 ISBN: {isbn}")
+    # 清理 ISBN，移除可能的連字號，國圖有時候對連字號敏感
+    clean_isbn = isbn.replace("-", "").strip()
+    print(f">>> [爬蟲] 查詢國圖 ISBN: {clean_isbn}")
     
-    # 使用 Session 物件來自動管理 Cookie (PHPSESSID)
     session = requests.Session()
     
-    # 設定 Header，偽裝成一般瀏覽器
+    # 偽裝成真正的 Chrome 瀏覽器
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://isbn.ncl.edu.tw/NEW_ISBNNet/"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "max-age=0",
+        "Connection": "keep-alive",
+        "Origin": "https://isbn.ncl.edu.tw",
+        "Referer": "https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php",
+        "Upgrade-Insecure-Requests": "1"
     }
     session.headers.update(headers)
     
     try:
-        # 步驟 1: 先訪問首頁，讓 Server 發送 PHPSESSID Cookie 給我們
-        # 這一步非常關鍵，沒有這個 Cookie，後續 POST 會失敗
-        init_url = "https://isbn.ncl.edu.tw/NEW_ISBNNet/"
-        session.get(init_url, timeout=10)
+        # 步驟 1: 訪問首頁，取得 PHPSESSID
+        # 加上 verify=False 忽略 SSL 憑證錯誤 (國圖憑證有時候會有問題)
+        # 加上 requests.packages.urllib3.disable_warnings() 避免跳出警告
+        requests.packages.urllib3.disable_warnings()
         
-        # 步驟 2: 直接對搜尋後端發送 POST 請求
-        # 參考網址參數: H30_SearchBooks.php?&Pact=DisplayAll4Simple
+        base_url = "https://isbn.ncl.edu.tw/NEW_ISBNNet/"
+        print(">>> [爬蟲] 1. 連線至首頁取得 Cookie...")
+        session.get(base_url, verify=False, timeout=10)
+        
+        # 步驟 2: 模擬送出搜尋表單
         search_url = "https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php"
         
-        # URL 參數 (Query String)
-        params = {
-            "Pact": "DisplayAll4Simple",
-            "Pfuncid": "281",   # 參照通常的流程 ID
-            "Ptarget": "5"      # 參照通常的 Target ID
-        }
-        
-        # 表單資料 (Form Data) - 依照您提供的 payload 設定
+        # 這是國圖搜尋表單的標準 Payload
         payload = {
             "FO_SearchField0": "ISBN",
-            "FO_SearchValue0": isbn,
-            "FO_Match": "2",          # 2 代表精確或包含
+            "FO_SearchValue0": clean_isbn,
+            "FO_Match": "1", # 1:精確, 2:包含 (改成1試試看)
+            "FB_search": "查詢", # 模擬按鈕點擊
+            "Pact": "DisplayAll4Simple",
             "FB_pageSID": "Simple",
-            "FB_clicked": "FB_開始查詢",
             "FO_每頁筆數": "10",
-            "FO_目前頁數": "1",
-            "FB_ListOri": ""
+            "FO_目前頁數": "1"
         }
         
-        # 發送 POST 請求 (Session 會自動帶入剛才取得的 Cookie)
-        res = session.post(search_url, params=params, data=payload, timeout=15)
-        res.raise_for_status()
+        print(">>> [爬蟲] 2. 發送搜尋請求...")
+        res = session.post(search_url, data=payload, verify=False, timeout=15)
         
-        # 國圖有時候編碼會跑掉，強制設為 utf-8 (通常它 meta 有寫，但保險起見)
-        res.encoding = 'utf-8'
+        # 修正編碼：國圖有時候不會在 Header 說它是 utf-8，導致 Python 用 ISO-8859-1 解碼變亂碼
+        res.encoding = 'utf-8' 
         
         # 步驟 3: 解析 HTML
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 檢查是否有結果
-        # 國圖的結果表格通常有 class="table-searchbooks"
-        result_table = soup.select_one(".table-searchbooks")
+        # 檢查是否搜尋到結果
+        # 國圖的結果通常在一個 ID 為 "table_list" 或 class "table-searchbooks" 的表格中
+        # 或是直接找有沒有包含 "詳" 的連結
         
-        if not result_table:
-            print(">>> [爬蟲] 國圖未找到結果表格")
+        # 策略 A: 先看有沒有直接進入詳情頁 (有時候只有一筆結果會直接跳轉?)
+        # 策略 B: 找列表
+        
+        results = soup.select("tr") # 抓所有列
+        target_data = None
+        
+        print(f">>> [爬蟲] 3. 解析頁面，找到 {len(results)} 行資料")
+
+        for row in results:
+            text = row.get_text()
+            # 簡單過濾：這行要有 ISBN 且要有 書名
+            if clean_isbn in text:
+                cols = row.find_all("td")
+                # 國圖列表通常欄位：序號 | ISBN | 書名/作者 | 出版者 | ...
+                # 對應 index: 0 | 1 | 2 | 3
+                if len(cols) >= 4:
+                    print(">>> [爬蟲] 找到疑似目標的資料列")
+                    
+                    # 抓取 書名/作者 (第3欄, index 2)
+                    title_author = cols[2].get_text(strip=True)
+                    if "/" in title_author:
+                        title = title_author.split("/")[0].strip()
+                        author = title_author.split("/")[1].strip()
+                    else:
+                        title = title_author
+                        author = "未知作者"
+                    
+                    # 抓取 出版社 (第4欄, index 3)
+                    publisher = cols[3].get_text(strip=True)
+                    
+                    # 抓取 出版日期 (第5欄, index 4)
+                    pub_date = ""
+                    if len(cols) > 4:
+                        pub_date = cols[4].get_text(strip=True)
+                    
+                    year = None
+                    month = None
+                    # 解析日期 YYYY/MM
+                    match = re.search(r'(\d{4})/(\d{1,2})', pub_date)
+                    if match:
+                        year = match.group(1)
+                        month = match.group(2)
+                    
+                    target_data = {
+                        "success": True,
+                        "title": title,
+                        "author": author,
+                        "publisher": publisher,
+                        "year": year,
+                        "month": month,
+                        "cover_url": "",
+                        "description": "(資料來源：國家圖書館)"
+                    }
+                    break # 找到就跳出
+        
+        if target_data:
+            print(f">>> [爬蟲] 成功解析: {target_data['title']}")
+            return target_data
+        else:
+            # 如果還是找不到，把 HTML 存下來除錯 (在本地測試時有用)
+            # print(soup.prettify()) 
+            print(">>> [爬蟲] 解析失敗，HTML 中未發現目標表格")
             return None
-            
-        # 找出所有的列 tr
-        rows = result_table.find_all("tr")
-        
-        # 第一列通常是標題 (序號, ISBN, 書名/作者...), 我們要找第二列(資料列)
-        # 遍歷尋找包含資料的列 (跳過標題)
-        target_row = None
-        for row in rows:
-            # 簡單判斷：如果有 td 且內容包含我們的 ISBN，大概就是了
-            # 或者直接取第二列 (index 1)
-            cols = row.find_all("td")
-            if len(cols) > 3:
-                # 檢查這列是否真的是資料列 (有些可能是分頁列)
-                # 國圖列表結構通常：[序號] [ISBN] [書名/作者] [出版者] [出版日期] ...
-                # ISBN 在第 2 欄 (index 1)
-                row_isbn = cols[1].get_text(strip=True)
-                # 清理 ISBN 中的多餘符號 (如 - )
-                clean_row_isbn = row_isbn.replace("-", "")
-                clean_input_isbn = isbn.replace("-", "")
-                
-                # 如果 ISBN 匹配 (或是包含關係)
-                if clean_input_isbn in clean_row_isbn:
-                    target_row = cols
-                    break
-        
-        if target_row:
-            # 解析欄位
-            # target_row[2] -> 書名/作者
-            title_author_raw = target_row[2].get_text(strip=True)
-            if "/" in title_author_raw:
-                parts = title_author_raw.split("/", 1)
-                title = parts[0].strip()
-                author = parts[1].strip()
-            else:
-                title = title_author_raw
-                author = "未知作者"
-            
-            # target_row[3] -> 出版社
-            publisher = target_row[3].get_text(strip=True)
-            
-            # target_row[4] -> 出版日期 (YYYY/MM)
-            pub_date_raw = target_row[4].get_text(strip=True)
-            year, month = None, None
-            if "/" in pub_date_raw:
-                try:
-                    parts = pub_date_raw.split("/")
-                    year = parts[0].strip()
-                    month = parts[1].strip()
-                except: pass
-            
-            return {
-                "success": True,
-                "title": title,
-                "author": author,
-                "publisher": publisher,
-                "year": year,
-                "month": month,
-                "cover_url": "", # 國圖無封面
-                "description": "(資料來源：國家圖書館 ISBN 網)"
-            }
-        
-        print(">>> [爬蟲] 國圖表格中未找到匹配資料")
-        return None
 
     except Exception as e:
-        print(f">>> [爬蟲] 國圖錯誤: {e}")
+        print(f">>> [爬蟲] 發生例外錯誤: {e}")
         return None
 
 # ========================================
@@ -498,4 +497,5 @@ def lookup_isbn(isbn):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
 
