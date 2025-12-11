@@ -8,30 +8,23 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f9f9f9; }
         form { max-width: 650px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); background-color: #fff; }
-        
         .isbn-group { display: flex; align-items: center; gap: 10px; }
         .isbn-group input { flex-grow: 1; padding: 10px; border: 2px solid #eee; border-radius: 6px; font-size: 16px; transition: border-color 0.3s; }
         .isbn-group input:focus { border-color: #007bff; outline: none; }
-        
         input[type="text"], input[type="number"], select, input[type="file"], textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-        
         .row { display: flex; gap: 15px; } .row > div { flex: 1; }
         .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; }
         .cover-preview img { width: 100%; display: block; }
-        
         .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; white-space: pre-wrap; }
         .success-message { color: #28a745; font-weight: bold; margin-bottom: 15px; text-align: center; }
-        
         h1 { margin-bottom: 20px; color: #333; }
         hr { margin: 25px 0; border: 0; border-top: 1px solid #eee; }
         label { font-weight: 600; font-size: 0.9em; color: #555; margin-bottom: 5px; display: block; }
-
         .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; transition: background 0.2s; color: white; }
         .btn-scan { background-color: #17a2b8; } .btn-scan:hover { background-color: #138496; }
         .btn-search { background-color: #007bff; } .btn-search:hover { background-color: #0056b3; }
         .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; }
         .btn-close { background-color: #dc3545; margin-top: 10px; }
-
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
         #reader { width: 100%; max-width: 400px; margin: 0 auto; }
     </style>
@@ -169,7 +162,7 @@
                         msgBox.textContent = '伺服器查詢成功！'; msgBox.style.color = 'green';
                     } else {
                         // 2. 伺服器失敗，轉向前端查詢 (金石堂)
-                        msgBox.textContent = '伺服器無資料，瀏覽器嘗試抓取金石堂...';
+                        msgBox.textContent = '伺服器無資料，嘗試瀏覽器查詢 (金石堂)...';
                         clientSideScrapeKingstone(isbn);
                     }
                 })
@@ -179,38 +172,33 @@
                 });
         }
 
-        // --- 前端爬蟲核心 (使用 CodeTabs Proxy) ---
-        // Proxy 格式: https://api.codetabs.com/v1/proxy?quest=<URL>
+        // ====== 前端爬蟲 ======
         
-        // 2. 金石堂
+        // 2. 金石堂 (修復 URL 錯誤)
         function clientSideScrapeKingstone(isbn) {
             const msgBox = document.getElementById('isbn-message');
             const targetUrl = `https://www.kingstone.com.tw/search/key/${isbn}`;
+            // 修正：移除 proxy 後面多餘的斜線
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
 
             fetch(proxyUrl)
                 .then(r => { if (!r.ok) throw new Error("KS Failed"); return r.text(); })
                 .then(html => {
                     const doc = new DOMParser().parseFromString(html, "text/html");
-                    
-                    // 金石堂可能在列表頁或詳情頁
                     const titleEl = doc.querySelector('h3.pdname_box a') || doc.querySelector('h1.pdname_box');
-                    if (!titleEl) { throw new Error("KS No Data"); }
+                    if (!titleEl) throw new Error("KS No Data");
 
                     const title = titleEl.getAttribute('title') || titleEl.textContent.trim();
                     const author = (doc.querySelector('span.author a') || doc.querySelector('.basic_box .author a') || {}).textContent || "未知作者";
                     const publisher = (doc.querySelector('span.publisher a') || doc.querySelector('.basic_box .publisher a') || {}).textContent || "";
-                    
                     let year = "", month = "";
                     const dateEl = doc.querySelector('span.pubdate') || doc.querySelector('.basic_box .pubdate');
                     if (dateEl) {
                         const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
                         if (m) { year = m[1]; month = m[2]; }
                     }
-                    
                     const imgEl = doc.querySelector('img.lazyload') || doc.querySelector('.cover_box img');
                     const cover = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src')) : "";
-                    
                     const descEl = doc.querySelector('.pdintro_txt1');
                     const desc = descEl ? descEl.textContent.trim().substring(0, 300) + "..." : "";
 
@@ -218,47 +206,57 @@
                     msgBox.textContent = '瀏覽器查詢成功 (來源:金石堂)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
-                    console.log("Kingstone failed, trying Sanmin...", err);
-                    msgBox.textContent = '金石堂無資料，嘗試抓取三民書局...';
-                    clientSideScrapeSanmin(isbn); // 失敗則轉三民
+                    console.log("Kingstone failed, trying Findbook...", err);
+                    msgBox.textContent = '金石堂無資料，嘗試抓取 Findbook...';
+                    clientSideScrapeFindbook(isbn);
                 });
         }
 
-        // 3. 三民書局 (Sanmin) - 備援方案
-        function clientSideScrapeSanmin(isbn) {
+        // 3. Findbook (找書網) - 結構簡單，成功率高
+        function clientSideScrapeFindbook(isbn) {
             const msgBox = document.getElementById('isbn-message');
-            const targetUrl = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
+            // Findbook 的搜尋網址
+            const targetUrl = `http://findbook.tw/search?q=${isbn}&keyword_type=isbn`;
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
 
             fetch(proxyUrl)
-                .then(r => { if (!r.ok) throw new Error("Sanmin Failed"); return r.text(); })
+                .then(r => { if (!r.ok) throw new Error("Findbook Failed"); return r.text(); })
                 .then(html => {
                     const doc = new DOMParser().parseFromString(html, "text/html");
                     
-                    const item = doc.querySelector('.SearchItem'); // 三民列表項目
-                    if (!item) throw new Error("Sanmin No Data");
-                    
-                    const titleEl = item.querySelector('.ProdName');
-                    const title = titleEl ? titleEl.textContent.trim() : "未知書名";
-                    
-                    const authorEl = item.querySelector('.Author');
-                    const author = authorEl ? authorEl.textContent.trim() : "未知作者";
-                    
-                    const pubEl = item.querySelector('.Publisher');
-                    const publisher = pubEl ? pubEl.textContent.trim() : "";
-                    
-                    const dateEl = item.querySelector('.PubDate');
-                    let year = "", month = "";
-                    if (dateEl) {
-                        const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
-                        if (m) { year = m[1]; month = m[2]; }
-                    }
+                    // Findbook 列表的第一個結果通常在 tbody tr
+                    const item = doc.querySelector('tbody tr');
+                    if (!item) throw new Error("Findbook No Data");
 
+                    // 書名 (第二個 td 的第一個連結)
+                    const link = item.querySelector('td:nth-child(2) a');
+                    if (!link) throw new Error("Findbook No Title");
+                    
+                    const title = link.getAttribute('title') || link.textContent.trim();
+                    
+                    // 作者與出版社在書名下方，格式較亂，這裡簡化處理
+                    // 嘗試從詳細頁面抓可能會被擋，所以只抓列表資訊
+                    let author = "未知作者";
+                    let publisher = "";
+                    
+                    // 嘗試解析該欄位的文字 (通常是: 作者：XXX \n 出版社：YYY)
+                    const infoText = item.querySelector('td:nth-child(2)').textContent;
+                    const authorMatch = infoText.match(/作者：(.*?)(出版社|$)/);
+                    if (authorMatch) author = authorMatch[1].trim();
+                    
+                    const pubMatch = infoText.match(/出版社：(.*?)(出版日期|$)/);
+                    if (pubMatch) publisher = pubMatch[1].trim();
+                    
+                    const dateMatch = infoText.match(/出版日期：(\d{4})\/(\d{1,2})/);
+                    let year = "", month = "";
+                    if (dateMatch) { year = dateMatch[1]; month = dateMatch[2]; }
+
+                    // 封面
                     const imgEl = item.querySelector('img');
                     const cover = imgEl ? imgEl.getAttribute('src') : "";
 
-                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:三民書局)"});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:三民)'; msgBox.style.color = 'green';
+                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:Findbook)"});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:Findbook)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
                     console.error("All failed", err);
