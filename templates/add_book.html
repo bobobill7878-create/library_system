@@ -181,53 +181,54 @@
             const readerContainer = document.getElementById('reader-container');
             readerContainer.style.display = 'block';
 
-            // 如果已經有實例，先清除
             if (html5QrCode) {
                 html5QrCode.clear().catch(err => console.error(err));
             }
 
             html5QrCode = new Html5Qrcode("reader");
             
-            // ****** 關鍵設定：指定掃描 ISBN (EAN_13) ******
+            // 1. 設定掃描參數：啟用實驗性功能與原生偵測
             const config = {
-                fps: 10,    // 每秒掃描 10 次
-                qrbox: { width: 250, height: 150 },  // 設為長方形，更適合掃條碼
+                fps: 10,
+                // 設為扁長方形，強迫使用者橫向對準條碼，減少干擾
+                qrbox: { width: 300, height: 150 }, 
                 aspectRatio: 1.0,
-                // 只掃描條碼和 QR Code，提升效能與準確度
+                // 嘗試使用瀏覽器原生的 BarcodeDetector (Android Chrome 效果極佳)
+                useBarCodeDetectorIfSupported: true,
                 formatsToSupport: [ 
-                    Html5QrcodeSupportedFormats.EAN_13,  // 書籍 ISBN
-                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.EAN_13, // ISBN 是這個
                     Html5QrcodeSupportedFormats.CODE_128, 
-                    Html5QrcodeSupportedFormats.QR_CODE 
                 ]
             };
             
-            // 啟動掃描器
+            // 2. 設定鏡頭參數：強制要求高解析度
+            // 這是掃描條碼成功的關鍵，解析度太低線條會糊掉
+            const cameraConfig = { 
+                facingMode: "environment",
+                width: { min: 1024, ideal: 1920, max: 3840 },
+                height: { min: 576, ideal: 1080, max: 2160 }
+            };
+            
             html5QrCode.start(
-                { facingMode: "environment" }, // 優先使用後置鏡頭
+                cameraConfig, 
                 config,
                 (decodedText, decodedResult) => {
-                    // 掃描成功
                     console.log(`Scan result: ${decodedText}`, decodedResult);
                     
-                    // 1. 填入 ISBN
+                    // 填入 ISBN
                     document.getElementById('isbn').value = decodedText;
                     
-                    // 2. 播放成功音效 (選用，增加體驗)
-                    // let audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
-                    // audio.play();
-
-                    // 3. 停止掃描並隱藏
+                    // 停止掃描
                     stopScanner();
                     
-                    // 4. 自動觸發查詢
+                    // 自動觸發查詢
                     lookupBookData();
                 },
                 (errorMessage) => {
-                    // 掃描失敗的回調 (通常忽略，因為每秒會失敗很多次)
+                    // 忽略掃描過程中的錯誤
                 }
             ).catch((err) => {
-                alert("無法啟動鏡頭，請確認：\n1. 您使用的是 HTTPS 網址 (Render) 或 localhost。\n2. 已允許瀏覽器存取相機。");
+                alert("無法啟動鏡頭。請確認：\n1. 網址開頭是 https:// (Render) 或 localhost\n2. 瀏覽器已授權相機權限");
                 console.error(err);
                 readerContainer.style.display = 'none';
             });
@@ -302,3 +303,4 @@
 </body>
 
 </html>
+
