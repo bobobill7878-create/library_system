@@ -181,33 +181,53 @@
             const readerContainer = document.getElementById('reader-container');
             readerContainer.style.display = 'block';
 
+            // 如果已經有實例，先清除
+            if (html5QrCode) {
+                html5QrCode.clear().catch(err => console.error(err));
+            }
+
             html5QrCode = new Html5Qrcode("reader");
             
-            // 啟動掃描器，優先使用後置鏡頭 (environment)
+            // ****** 關鍵設定：指定掃描 ISBN (EAN_13) ******
+            const config = {
+                fps: 10,    // 每秒掃描 10 次
+                qrbox: { width: 250, height: 150 },  // 設為長方形，更適合掃條碼
+                aspectRatio: 1.0,
+                // 只掃描條碼和 QR Code，提升效能與準確度
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13,  // 書籍 ISBN
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.CODE_128, 
+                    Html5QrcodeSupportedFormats.QR_CODE 
+                ]
+            };
+            
+            // 啟動掃描器
             html5QrCode.start(
-                { facingMode: "environment" }, 
-                {
-                    fps: 10,    // 每秒掃描次數
-                    qrbox: 250  // 掃描框大小
-                },
+                { facingMode: "environment" }, // 優先使用後置鏡頭
+                config,
                 (decodedText, decodedResult) => {
-                    // 掃描成功的回調函式
+                    // 掃描成功
                     console.log(`Scan result: ${decodedText}`, decodedResult);
                     
                     // 1. 填入 ISBN
                     document.getElementById('isbn').value = decodedText;
                     
-                    // 2. 停止掃描並隱藏
+                    // 2. 播放成功音效 (選用，增加體驗)
+                    // let audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
+                    // audio.play();
+
+                    // 3. 停止掃描並隱藏
                     stopScanner();
                     
-                    // 3. 自動觸發查詢
+                    // 4. 自動觸發查詢
                     lookupBookData();
                 },
                 (errorMessage) => {
-                    // 掃描中的錯誤 (通常不需要處理，因為每幀沒掃到都會報錯)
+                    // 掃描失敗的回調 (通常忽略，因為每秒會失敗很多次)
                 }
             ).catch((err) => {
-                alert("無法啟動鏡頭，請確認您使用的是 HTTPS 協定或 localhost，並已授權鏡頭存取。");
+                alert("無法啟動鏡頭，請確認：\n1. 您使用的是 HTTPS 網址 (Render) 或 localhost。\n2. 已允許瀏覽器存取相機。");
                 console.error(err);
                 readerContainer.style.display = 'none';
             });
@@ -220,6 +240,7 @@
                     document.getElementById('reader-container').style.display = 'none';
                 }).catch(err => {
                     console.error("Failed to stop scanner", err);
+                    document.getElementById('reader-container').style.display = 'none';
                 });
             } else {
                 document.getElementById('reader-container').style.display = 'none';
@@ -279,4 +300,5 @@
         }
     </script>
 </body>
+
 </html>
