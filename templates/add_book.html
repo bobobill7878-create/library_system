@@ -187,53 +187,42 @@
 
             html5QrCode = new Html5Qrcode("reader");
             
-            // 1. 設定掃描參數：啟用實驗性功能與原生偵測
+            // 掃描參數：保留條碼優化
             const config = {
                 fps: 10,
-                // 設為扁長方形，強迫使用者橫向對準條碼，減少干擾
-                qrbox: { width: 300, height: 150 }, 
+                // 稍微縮小掃描框，讓使用者更專注對準
+                qrbox: { width: 250, height: 150 }, 
                 aspectRatio: 1.0,
-                // 嘗試使用瀏覽器原生的 BarcodeDetector (Android Chrome 效果極佳)
+                // 嘗試使用原生偵測 (Android 支援度較好)
                 useBarCodeDetectorIfSupported: true,
                 formatsToSupport: [ 
-                    Html5QrcodeSupportedFormats.EAN_13, // ISBN 是這個
-                    Html5QrcodeSupportedFormats.CODE_128, 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.CODE_128 
                 ]
             };
             
-            // 2. 設定鏡頭參數：強制要求高解析度
-            // 這是掃描條碼成功的關鍵，解析度太低線條會糊掉
-            const cameraConfig = { 
-                facingMode: "environment",
-                width: { min: 1024, ideal: 1920, max: 3840 },
-                height: { min: 576, ideal: 1080, max: 2160 }
-            };
-            
+            // ****** 修正：移除強制的解析度限制，改回自動模式 ******
+            // 這樣可以避免手機不支援特定解析度而報錯
             html5QrCode.start(
-                cameraConfig, 
+                { facingMode: "environment" }, 
                 config,
                 (decodedText, decodedResult) => {
                     console.log(`Scan result: ${decodedText}`, decodedResult);
-                    
-                    // 填入 ISBN
                     document.getElementById('isbn').value = decodedText;
-                    
-                    // 停止掃描
                     stopScanner();
-                    
-                    // 自動觸發查詢
                     lookupBookData();
                 },
                 (errorMessage) => {
-                    // 忽略掃描過程中的錯誤
+                    // 忽略掃描中的錯誤
                 }
             ).catch((err) => {
-                alert("無法啟動鏡頭。請確認：\n1. 網址開頭是 https:// (Render) 或 localhost\n2. 瀏覽器已授權相機權限");
-                console.error(err);
+                // 這裡會顯示具體的錯誤原因
+                console.error("啟動失敗:", err);
+                alert("無法啟動鏡頭！\n可能原因：\n1. 權限被拒絕 (請重設網站權限)\n2. 手機不支援此解析度\n3. 網址不是 HTTPS");
                 readerContainer.style.display = 'none';
             });
         }
-
+        
         function stopScanner() {
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
@@ -303,4 +292,5 @@
 </body>
 
 </html>
+
 
