@@ -11,20 +11,21 @@ import io
 
 # 應用程式設定
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///library.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# 優先讀取環境變數中的 DATABASE_URL (雲端用)，如果沒有則使用本地 SQLite
+# --- 資料庫設定 (雲端與本地兼容) ---
+# 優先讀取環境變數 DATABASE_URL，如果沒有則使用本地 SQLite
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///library.db')
 
-# 修正某些雲端平台網址開頭是 postgres:// 的問題 (SQLAlchemy 需要 postgresql://)
+# 修正部分雲端資料庫網址開頭為 postgres:// 的問題 (SQLAlchemy 需要 postgresql://)
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# --------------------------------
 
 # --- 檔案上傳相關設定 ---
+# 注意：Render 免費版重啟後，此資料夾內的圖片會消失
 UPLOAD_FOLDER = 'static/covers'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -68,12 +69,12 @@ class Book(db.Model):
     notes = db.Column(db.Text, nullable=True)                 
 
     # ****** V2.0 新增欄位 ******
-    series = db.Column(db.String(100), nullable=True)  # 叢書名 (如: 哈利波特)
-    volume = db.Column(db.String(20), nullable=True)   # 集數 (如: 1, 2, 上, 下)
+    series = db.Column(db.String(100), nullable=True)  # 叢書名
+    volume = db.Column(db.String(20), nullable=True)   # 集數
     location = db.Column(db.String(100), nullable=True) # 存放位置
-    status = db.Column(db.String(20), default='未讀')   # 閱讀狀態 (未讀/閱讀中/已讀/棄坑)
-    rating = db.Column(db.Integer, default=0)          # 評分 (0-5)
-    tags = db.Column(db.String(200), nullable=True)    # 標籤 (逗號分隔字串)
+    status = db.Column(db.String(20), default='未讀')   # 閱讀狀態
+    rating = db.Column(db.Integer, default=0)          # 評分
+    tags = db.Column(db.String(200), nullable=True)    # 標籤
     # ***************************
 
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
@@ -88,13 +89,10 @@ def index():
     search_field = request.args.get('search_field', 'all') 
     query = request.args.get('query', '').strip()  
     category_id = request.args.get('category_id') 
-    
-    # 加入狀態篩選
     status_filter = request.args.get('status_filter')
 
     books_query = Book.query
 
-    # 1. 關鍵字查詢 (增加 Series 和 Tags 搜尋)
     if query:
         base_filter = Book.title.ilike(f'%{query}%') | \
                       Book.author.ilike(f'%{query}%') | \
@@ -113,16 +111,12 @@ def index():
         
         books_query = books_query.filter(search_filter)
 
-    # 2. 分類篩選
     if category_id and category_id.isdigit():
         books_query = books_query.filter(Book.category_id == int(category_id))
 
-    # 3. 狀態篩選
     if status_filter:
         books_query = books_query.filter(Book.status == status_filter)
 
-    # 預設排序：先排叢書，再排集數，最後排 ID
-    # 這裡簡單處理：如果有叢書名，優先顯示，這能讓漫畫連在一起
     all_books = books_query.order_by(Book.series.desc(), Book.volume.asc(), Book.id.desc()).all()
     all_categories = Category.query.all()
     
@@ -139,7 +133,6 @@ def index():
 @app.route('/add', methods=['GET', 'POST'])
 def add_book():
     if request.method == 'POST':
-        # 基礎欄位
         title = request.form.get('title')
         author = request.form.get('author')
         publisher = request.form.get('publisher') 
@@ -149,19 +142,16 @@ def add_book():
         category_id = request.form.get('category')
         cover_url = request.form.get('cover_url') 
         
-        # V1.0 擴充欄位
         print_version = request.form.get('print_version') 
         notes = request.form.get('notes')
         description = request.form.get('description')
         
-        # ****** V2.0 新增欄位 ******
         series = request.form.get('series')
         volume = request.form.get('volume')
         location = request.form.get('location')
         status = request.form.get('status')
         rating = request.form.get('rating')
         tags = request.form.get('tags')
-        # ***************************
 
         if 'cover_file' in request.files:
             file = request.files['cover_file']
@@ -184,8 +174,6 @@ def add_book():
             category_id=int(category_id) if category_id and category_id.isdigit() else None,
             cover_url=cover_url,
             description=description, print_version=print_version, notes=notes,
-            
-            # V2.0 儲存
             series=series, volume=volume, location=location,
             status=status, rating=int(rating) if rating else 0, tags=tags
         )
@@ -225,7 +213,6 @@ def edit_book(book_id):
         book.description = request.form.get('description')
         book.notes = request.form.get('notes')
 
-        # V2.0 更新
         book.series = request.form.get('series')
         book.volume = request.form.get('volume')
         book.location = request.form.get('location')
@@ -234,7 +221,6 @@ def edit_book(book_id):
         book.rating = int(rating_val) if rating_val else 0
         book.tags = request.form.get('tags')
 
-        # 封面處理
         current_cover_url = request.form.get('cover_url')
         if 'cover_file' in request.files:
             file = request.files['cover_file']
@@ -333,7 +319,7 @@ def edit_category(category_id):
     db.session.commit()
     return jsonify({"success": True, "message": "更新成功", "new_name": new_name})
 
-# --- 路由 9: 單本書籍 API (V2.0 擴充) ---
+# --- 路由 9: 單本書籍 API ---
 @app.route('/api/book/<int:book_id>', methods=['GET'])
 def get_book_data(book_id):
     book = Book.query.get_or_404(book_id)
@@ -345,70 +331,55 @@ def get_book_data(book_id):
         'print_version': book.print_version or 'N/A',
         'notes': book.notes or '', 'description': book.description or '',
         'cover_url': book.cover_url,
-        # V2.0 新增
         'series': book.series or '', 'volume': book.volume or '',
         'location': book.location or '', 'status': book.status,
         'rating': book.rating, 'tags': book.tags or ''
     })
 
-# --- V2.0 新功能：路由 10 - 數據儀表板 ---
+# --- V2.0 路由 10: 數據儀表板 ---
 @app.route('/dashboard')
 def dashboard():
-    # 1. 藏書總數
     total_books = Book.query.count()
-    
-    # 2. 依分類統計
     cat_stats = db.session.query(Category.name, func.count(Book.id)).join(Book).group_by(Category.name).all()
-    
-    # 3. 依閱讀狀態統計
     status_stats = db.session.query(Book.status, func.count(Book.id)).group_by(Book.status).all()
-    
-    # 4. 評分統計
     rating_stats = db.session.query(Book.rating, func.count(Book.id)).group_by(Book.rating).all()
-    
-    return render_template('dashboard.html', total=total_books, 
-                           cat_stats=dict(cat_stats), status_stats=dict(status_stats), 
-                           rating_stats=dict(rating_stats))
+    return render_template('dashboard.html', total=total_books, cat_stats=dict(cat_stats), status_stats=dict(status_stats), rating_stats=dict(rating_stats))
 
-# --- V2.0 新功能：路由 11 - 匯出 CSV ---
+# --- V2.0 路由 11: 匯出 CSV ---
 @app.route('/export')
 def export_csv():
-    # 查詢所有書籍
     books = Book.query.all()
-    
-    # 使用 StringIO 在記憶體中寫入 CSV
     output = io.StringIO()
-
-    # 這行是為了讓 Excel 能正確識別 UTF-8 編碼的中文字
-    output.write('\ufeff')
-
+    output.write('\ufeff') # BOM for Excel
     writer = csv.writer(output)
-    
-    # 寫入標頭
     writer.writerow(['ID', '書名', '作者', '出版社', 'ISBN', '分類', '叢書', '集數', '狀態', '評分', '位置', '加入日期'])
-    
-    # 寫入資料
     for book in books:
         cat_name = book.category.name if book.category else '無分類'
         writer.writerow([
             book.id, book.title, book.author, book.publisher, 
-            f"'{book.isbn}" if book.isbn else '', # 加單引號避免 Excel 轉成科學記號
+            f"'{book.isbn}" if book.isbn else '', 
             cat_name, book.series, book.volume, book.status, book.rating, book.location, book.added_date
         ])
-        
     output.seek(0)
-    
-    return Response(
-        output,
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment;filename=library_backup.csv"}
-    )
+    return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=library_backup.csv"})
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+# --- 資料庫初始化區塊 (重要！這段會確保雲端 Gunicorn 啟動時建立表格) ---
+with app.app_context():
+    # 嘗試建立表格
+    db.create_all()
+    
+    # 嘗試初始化分類 (包在 try 裡以防重複初始化或其他錯誤)
+    try:
         if not Category.query.first():
+            print(">>> 正在初始化預設分類...")
             default_categories = ['小說','原文小說', '漫畫', '原文漫畫', '畫冊', '寫真', '設定集']
-            for name in default_categories: db.session.add(Category(name=name))
+            for name in default_categories:
+                db.session.add(Category(name=name))
             db.session.commit()
+            print(">>> 分類初始化完成。")
+    except Exception as e:
+        print(f">>> 初始化分類時略過 (可能已存在或連線問題): {e}")
+
+# --- 應用程式啟動區塊 ---
+if __name__ == '__main__':
     app.run(debug=True)
