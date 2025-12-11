@@ -4,3 +4,4 @@ requests
 Pillow
 gunicorn
 psycopg2-binary
+beautifulsoup4
