@@ -10,8 +10,11 @@ import csv
 import io
 import re
 from bs4 import BeautifulSoup
+import urllib3
 
-# 應用程式設定
+# 忽略 SSL 警告 (針對國圖)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 app = Flask(__name__)
 
 # --- 資料庫設定 ---
@@ -64,186 +67,164 @@ class Book(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
     def __repr__(self): return f'<Book {self.title}>'
 
+# ==========================================
+# 🔥 爬蟲工具區 🔥
+# ==========================================
 
-# ====== 🕷️ 爬蟲 1：博客來 (Books.com.tw) ======
+# 1. 博客來 (Books.com.tw)
 def scrape_books_com_tw(isbn):
-    print(f">>> [爬蟲] 查詢博客來 ISBN: {isbn}")
+    print(f">>> [博客來] 開始查詢: {isbn}")
     url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
     try:
-        response = requests.get(url, headers=headers, timeout=8)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        results = soup.select('.table-search-tbody .table-td')
-        if not results: return None
+        res = requests.get(url, headers=headers, timeout=8)
+        if res.status_code != 200: return None
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 抓取列表第一項
+        item = soup.select_one('.table-search-tbody .table-td')
+        if not item: 
+            # 嘗試抓取另一種排版 (Grid View)
+            item = soup.select_one('li.item')
+            if not item: return None
 
-        first_item = results[0] 
-        title_tag = first_item.select_one('h4 a')
+        # 書名
+        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
         if not title_tag: return None
         title = title_tag.get('title') or title_tag.text.strip()
-        detail_url = title_tag.get('href')
-        if detail_url and detail_url.startswith("//"): detail_url = "https:" + detail_url
+        
+        # 作者
+        author = "未知作者"
+        author_tag = item.select_one('a[rel="go_author"]')
+        if author_tag: author = author_tag.get('title') or author_tag.text.strip()
 
-        author_tag = first_item.select_one('a[rel="go_author"]')
-        author = author_tag.get('title') if author_tag else "未知作者"
-        publisher_tag = first_item.select_one('a[rel="go_publisher"]')
-        publisher = publisher_tag.get('title') if publisher_tag else ""
+        # 出版社
+        publisher = ""
+        pub_tag = item.select_one('a[rel="go_publisher"]')
+        if pub_tag: publisher = pub_tag.get('title') or pub_tag.text.strip()
 
-        text_content = first_item.get_text()
+        # 日期
+        text = item.get_text()
         year, month = None, None
-        date_match = re.search(r'出版日期：(\d{4})/(\d{1,2})', text_content)
-        if date_match:
-            year, month = date_match.group(1), date_match.group(2)
-        
-        img_tag = first_item.select_one('img')
-        cover_url = ""
-        if img_tag: cover_url = img_tag.get('data-src') or img_tag.get('src')
-        
-        description = ""
-        if detail_url:
-            try:
-                detail_res = requests.get(detail_url, headers=headers, timeout=5)
-                detail_soup = BeautifulSoup(detail_res.text, 'html.parser')
-                desc_div = detail_soup.select_one('div.content')
-                if desc_div: description = desc_div.get_text(strip=True)
-            except: pass
+        match = re.search(r'(\d{4})/(\d{1,2})', text)
+        if match: year, month = match.group(1), match.group(2)
 
-        return {
-            "success": True, "title": title, "author": author, "publisher": publisher,
-            "year": year, "month": month, "cover_url": cover_url, "description": description
-        }
+        # 封面
+        cover = ""
+        img = item.select_one('img')
+        if img: cover = img.get('data-src') or img.get('src') or ""
+        
+        # 大綱 (省略詳情頁抓取以加速)
+        return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": ""}
     except Exception as e:
-        print(f">>> [爬蟲] 博客來錯誤: {e}")
+        print(f">>> [博客來] 錯誤: {e}")
         return None
 
-# ====== 🕷️ 爬蟲 2：國家圖書館 (NCL ISBN Net) - 強力修正版 ======
-def scrape_ncl_isbn(isbn):
-    # 清理 ISBN，移除可能的連字號，國圖有時候對連字號敏感
-    clean_isbn = isbn.replace("-", "").strip()
-    print(f">>> [爬蟲] 查詢國圖 ISBN: {clean_isbn}")
-    
-    session = requests.Session()
-    
-    # 偽裝成真正的 Chrome 瀏覽器
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "max-age=0",
-        "Connection": "keep-alive",
-        "Origin": "https://isbn.ncl.edu.tw",
-        "Referer": "https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php",
-        "Upgrade-Insecure-Requests": "1"
-    }
-    session.headers.update(headers)
-    
+# 2. 讀冊生活 (TaaZe) - 新增！
+def scrape_taaze(isbn):
+    print(f">>> [讀冊] 開始查詢: {isbn}")
+    url = f"https://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D={isbn}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
     try:
-        # 步驟 1: 訪問首頁，取得 PHPSESSID
-        # 加上 verify=False 忽略 SSL 憑證錯誤 (國圖憑證有時候會有問題)
-        # 加上 requests.packages.urllib3.disable_warnings() 避免跳出警告
-        requests.packages.urllib3.disable_warnings()
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        base_url = "https://isbn.ncl.edu.tw/NEW_ISBNNet/"
-        print(">>> [爬蟲] 1. 連線至首頁取得 Cookie...")
-        session.get(base_url, verify=False, timeout=10)
+        # 讀冊的結構
+        item = soup.select_one('.search_result_item')
+        if not item: return None
         
-        # 步驟 2: 模擬送出搜尋表單
-        search_url = "https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php"
+        # 書名
+        title_link = item.select_one('.book_title_link')
+        if not title_link: return None
+        title = title_link.text.strip()
         
-        # 這是國圖搜尋表單的標準 Payload
+        # 詳情頁 (抓大綱用)
+        detail_link = title_link.get('href')
+        
+        # 作者
+        author = "未知作者"
+        author_div = item.select_one('.book_author')
+        if author_div: author = author_div.text.strip()
+
+        # 出版社
+        publisher = ""
+        pub_div = item.select_one('.book_publisher')
+        if pub_div: publisher = pub_div.text.strip()
+
+        # 日期
+        year, month = None, None
+        pub_date_div = item.select_one('.book_publish_date')
+        if pub_date_div:
+            match = re.search(r'(\d{4})-(\d{1,2})', pub_date_div.text)
+            if match: year, month = match.group(1), match.group(2)
+
+        # 封面
+        cover = ""
+        img = item.select_one('.book_img img')
+        if img: cover = img.get('src') or ""
+        
+        # 大綱 (嘗試進入詳情頁)
+        desc = ""
+        if detail_link:
+             try:
+                if not detail_link.startswith("http"): detail_link = "https://www.taaze.tw/" + detail_link
+                d_res = requests.get(detail_link, headers=headers, timeout=5)
+                d_soup = BeautifulSoup(d_res.text, 'html.parser')
+                desc_div = d_soup.select_one('#prod_desc') # 讀冊大綱 ID
+                if desc_div: desc = desc_div.get_text(strip=True)[:500] + "..."
+             except: pass
+
+        return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": desc}
+
+    except Exception as e:
+        print(f">>> [讀冊] 錯誤: {e}")
+        return None
+
+# 3. 國家圖書館 (NCL)
+def scrape_ncl_isbn(isbn):
+    print(f">>> [國圖] 開始查詢: {isbn}")
+    clean_isbn = isbn.replace("-", "").strip()
+    session = requests.Session()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
+        "Origin": "https://isbn.ncl.edu.tw",
+        "Referer": "https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php"
+    }
+    try:
+        # 1. Get Cookie
+        session.get("https://isbn.ncl.edu.tw/NEW_ISBNNet/", headers=headers, verify=False, timeout=10)
+        # 2. Post Search
         payload = {
-            "FO_SearchField0": "ISBN",
-            "FO_SearchValue0": clean_isbn,
-            "FO_Match": "1", # 1:精確, 2:包含 (改成1試試看)
-            "FB_search": "查詢", # 模擬按鈕點擊
-            "Pact": "DisplayAll4Simple",
-            "FB_pageSID": "Simple",
-            "FO_每頁筆數": "10",
-            "FO_目前頁數": "1"
+            "FO_SearchField0": "ISBN", "FO_SearchValue0": clean_isbn, "FO_Match": "1",
+            "Pact": "DisplayAll4Simple", "FB_pageSID": "Simple", "FO_每頁筆數": "10", "FO_目前頁數": "1"
         }
-        
-        print(">>> [爬蟲] 2. 發送搜尋請求...")
-        res = session.post(search_url, data=payload, verify=False, timeout=15)
-        
-        # 修正編碼：國圖有時候不會在 Header 說它是 utf-8，導致 Python 用 ISO-8859-1 解碼變亂碼
-        res.encoding = 'utf-8' 
-        
-        # 步驟 3: 解析 HTML
+        res = session.post("https://isbn.ncl.edu.tw/NEW_ISBNNet/H30_SearchBooks.php", data=payload, headers=headers, verify=False, timeout=15)
+        res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 檢查是否搜尋到結果
-        # 國圖的結果通常在一個 ID 為 "table_list" 或 class "table-searchbooks" 的表格中
-        # 或是直接找有沒有包含 "詳" 的連結
-        
-        # 策略 A: 先看有沒有直接進入詳情頁 (有時候只有一筆結果會直接跳轉?)
-        # 策略 B: 找列表
-        
-        results = soup.select("tr") # 抓所有列
-        target_data = None
-        
-        print(f">>> [爬蟲] 3. 解析頁面，找到 {len(results)} 行資料")
-
-        for row in results:
+        # 解析
+        rows = soup.select("tr")
+        for row in rows:
             text = row.get_text()
-            # 簡單過濾：這行要有 ISBN 且要有 書名
             if clean_isbn in text:
                 cols = row.find_all("td")
-                # 國圖列表通常欄位：序號 | ISBN | 書名/作者 | 出版者 | ...
-                # 對應 index: 0 | 1 | 2 | 3
                 if len(cols) >= 4:
-                    print(">>> [爬蟲] 找到疑似目標的資料列")
-                    
-                    # 抓取 書名/作者 (第3欄, index 2)
-                    title_author = cols[2].get_text(strip=True)
-                    if "/" in title_author:
-                        title = title_author.split("/")[0].strip()
-                        author = title_author.split("/")[1].strip()
-                    else:
-                        title = title_author
-                        author = "未知作者"
-                    
-                    # 抓取 出版社 (第4欄, index 3)
+                    raw_title = cols[2].get_text(strip=True)
+                    title = raw_title.split("/")[0].strip() if "/" in raw_title else raw_title
+                    author = raw_title.split("/")[1].strip() if "/" in raw_title else "未知"
                     publisher = cols[3].get_text(strip=True)
+                    pub_raw = cols[4].get_text(strip=True) if len(cols)>4 else ""
+                    year, month = None, None
+                    match = re.search(r'(\d{4})/(\d{1,2})', pub_raw)
+                    if match: year, month = match.group(1), match.group(2)
                     
-                    # 抓取 出版日期 (第5欄, index 4)
-                    pub_date = ""
-                    if len(cols) > 4:
-                        pub_date = cols[4].get_text(strip=True)
-                    
-                    year = None
-                    month = None
-                    # 解析日期 YYYY/MM
-                    match = re.search(r'(\d{4})/(\d{1,2})', pub_date)
-                    if match:
-                        year = match.group(1)
-                        month = match.group(2)
-                    
-                    target_data = {
-                        "success": True,
-                        "title": title,
-                        "author": author,
-                        "publisher": publisher,
-                        "year": year,
-                        "month": month,
-                        "cover_url": "",
-                        "description": "(資料來源：國家圖書館)"
-                    }
-                    break # 找到就跳出
-        
-        if target_data:
-            print(f">>> [爬蟲] 成功解析: {target_data['title']}")
-            return target_data
-        else:
-            # 如果還是找不到，把 HTML 存下來除錯 (在本地測試時有用)
-            # print(soup.prettify()) 
-            print(">>> [爬蟲] 解析失敗，HTML 中未發現目標表格")
-            return None
-
+                    return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": "", "description": "(來源:國圖)"}
+        return None
     except Exception as e:
-        print(f">>> [爬蟲] 發生例外錯誤: {e}")
+        print(f">>> [國圖] 錯誤: {e}")
         return None
 
-# ========================================
+# ==========================================
 
 @app.route('/init_db')
 def init_db():
@@ -454,7 +435,7 @@ def export_csv():
     output.seek(0)
     return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=library_backup.csv"})
 
-# ====== 🔥 智慧查詢路由 (三段式查詢) 🔥 ======
+# ====== 🔥 智慧查詢路由 (四段式查詢) 🔥 ======
 @app.route('/api/lookup_isbn/<isbn>', methods=['GET'])
 def lookup_isbn(isbn):
     if not isbn: return jsonify({"error": "ISBN 碼不可為空"}), 400
@@ -478,14 +459,21 @@ def lookup_isbn(isbn):
                 print(">>> Google API 命中")
     except: pass
 
-    # 2. 如果 Google 失敗，嘗試博客來
+    # 2. 如果 Google 失敗，嘗試博客來 (爬蟲)
     if not result_data or not result_data.get('title'):
         books_tw = scrape_books_com_tw(isbn)
         if books_tw:
             result_data = books_tw
             print(">>> 博客來命中")
 
-    # 3. 如果博客來也失敗，嘗試國圖 (NCL)
+    # 3. 如果博客來失敗，嘗試讀冊 TaaZe (爬蟲 - 新增!)
+    if not result_data or not result_data.get('title'):
+        taaze_data = scrape_taaze(isbn)
+        if taaze_data:
+            result_data = taaze_data
+            print(">>> 讀冊 (TaaZe) 命中")
+
+    # 4. 如果都失敗，嘗試國圖 (爬蟲 - 保底)
     if not result_data or not result_data.get('title'):
         ncl_data = scrape_ncl_isbn(isbn)
         if ncl_data:
@@ -493,9 +481,7 @@ def lookup_isbn(isbn):
             print(">>> 國圖 (NCL) 命中")
 
     if result_data: return jsonify(result_data)
-    else: return jsonify({"error": "找不到此 ISBN (Google/博客來/國圖皆無資料)"}), 404
+    else: return jsonify({"error": "找不到此 ISBN (四大資料庫皆無資料)"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
