@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>數據儀表板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: #f4f6f9; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .stats-cards { display: flex; justify-content: center; gap: 20px; margin-bottom: 40px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 200px; }
+        .card h3 { margin: 0; color: #666; font-size: 1rem; }
+        .card .number { font-size: 2.5rem; font-weight: bold; color: #28a745; margin-top: 10px; }
+        
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .chart-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .btn { padding: 8px 15px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; display: inline-block; margin-bottom: 20px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 圖書館數據分析</h1>
+        <a href="{{ url_for('index') }}" class="btn">« 返回首頁</a>
+
+        <div class="stats-cards">
+            <div class="card">
+                <h3>總藏書量</h3>
+                <div class="number">{{ total }}</div>
+            </div>
+            </div>
+
+        <div class="charts-grid">
+            <div class="chart-box">
+                <h3>📚 分類統計</h3>
+                <canvas id="catChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>📖 閱讀狀態</h3>
+                <canvas id="statusChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>⭐ 評分分佈</h3>
+                <canvas id="ratingChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 準備數據
+        const catData = {{ cat_stats | tojson }};
+        const statusData = {{ status_stats | tojson }};
+        const ratingData = {{ rating_stats | tojson }};
+
+        // 1. 分類圖表
+        new Chart(document.getElementById('catChart'), {
+            type: 'pie',
+            data: {
+                labels: Object.keys(catData),
+                datasets: [{
+                    data: Object.values(catData),
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+                }]
+            }
+        });
+
+        // 2. 狀態圖表
+        new Chart(document.getElementById('statusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(statusData),
+                datasets: [{
+                    data: Object.values(statusData),
+                    backgroundColor: ['#6c757d', '#007bff', '#28a745', '#dc3545']
+                }]
+            }
+        });
+
+        // 3. 評分圖表
+        new Chart(document.getElementById('ratingChart'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(ratingData).map(r => r + '星'),
+                datasets: [{
+                    label: '本數',
+                    data: Object.values(ratingData),
+                    backgroundColor: '#FFCE56'
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+    </script>
+</body>
+</html>

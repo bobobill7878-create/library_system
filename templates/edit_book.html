@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>編輯圖書</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; }
+        form { max-width: 650px; width: 100%; padding: 25px; border: 1px solid #ccc; border-radius: 8px; }
+        input, select, textarea { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .row { display: flex; gap: 15px; } .row > div { flex: 1; }
+        label { font-weight: bold; font-size: 0.9em; color: #555; }
+        button { background-color: #2196F3; color: white; border: none; padding: 12px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background-color: #0b7dda; }
+    </style>
+</head>
+<body>
+    <h1>✏️ 編輯圖書: {{ book.title }}</h1>
+    
+    <form method="POST" enctype="multipart/form-data">
+        <label>書名:</label><input type="text" name="title" value="{{ book.title }}" required>
+
+        <div class="row">
+            <div><label>作者:</label><input type="text" name="author" value="{{ book.author }}" required></div>
+            <div><label>出版社:</label><input type="text" name="publisher" value="{{ book.publisher or '' }}"></div>
+        </div>
+
+        <div class="row">
+            <div><label>ISBN:</label><input type="text" name="isbn" value="{{ book.isbn or '' }}"></div>
+            <div><label>印刷版本:</label>
+                <select name="print_version">
+                    <option value="">--</option>
+                    {% for v in ['首刷','豪華首刷','再版'] %}
+                    <option value="{{ v }}" {% if book.print_version == v %}selected{% endif %}>{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="row">
+            <div><label>叢書名:</label><input type="text" name="series" value="{{ book.series or '' }}"></div>
+            <div><label>集數:</label><input type="text" name="volume" value="{{ book.volume or '' }}"></div>
+        </div>
+
+        <div class="row">
+            <div><label>分類:</label>
+                <select name="category">
+                    <option value="">--</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if book.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div><label>出版年/月:</label>
+                <div style="display: flex; gap: 5px;">
+                    <input type="number" name="year" value="{{ book.year or '' }}" placeholder="年">
+                    <select name="month">
+                        <option value="">月</option>
+                        {% for m in range(1, 13) %}
+                        <option value="{{ m }}" {% if book.month == m %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <hr>
+        <div class="row">
+            <div><label>閱讀狀態:</label>
+                <select name="status">
+                    {% for s in ['未讀','閱讀中','已讀完','棄坑'] %}
+                    <option value="{{ s }}" {% if book.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div><label>評分:</label>
+                <select name="rating">
+                    <option value="0" {% if book.rating == 0 %}selected{% endif %}>未評分</option>
+                    {% for r in range(5, 0, -1) %}
+                    <option value="{{ r }}" {% if book.rating == r %}selected{% endif %}>{{ r }} 星</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="row">
+            <div><label>位置:</label><input type="text" name="location" value="{{ book.location or '' }}"></div>
+            <div><label>標籤:</label><input type="text" name="tags" value="{{ book.tags or '' }}"></div>
+        </div>
+
+        <label>封面:</label>
+        <input type="hidden" name="cover_url" value="{{ book.cover_url or '' }}">
+        {% if book.cover_url %}<img src="{{ book.cover_url }}" style="height: 80px; display: block; margin-bottom: 5px;">{% endif %}
+        <input type="file" name="cover_file" accept="image/*">
+
+        <label>大綱:</label><textarea name="description" rows="4">{{ book.description or '' }}</textarea>
+        <label>備註:</label><textarea name="notes" rows="2">{{ book.notes or '' }}</textarea>
+
+        <button type="submit">儲存變更</button>
+    </form>
+    <p><a href="{{ url_for('index') }}">« 返回</a></p>
+</body>
+</html>

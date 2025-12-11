@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新增圖書</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; }
+        form { max-width: 650px; width: 100%; padding: 25px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        
+        .isbn-group { display: flex; align-items: center; gap: 10px; }
+        .isbn-group input { flex-grow: 1; }
+        
+        input[type="text"], input[type="number"], select, input[type="file"], textarea { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        
+        .row { display: flex; gap: 15px; }
+        .row > div { flex: 1; }
+        
+        .cover-preview { margin-top: 10px; display: none; max-width: 120px; border: 1px solid #ddd; padding: 5px; }
+        .cover-preview img { width: 100%; display: block; }
+        
+        .message-box { color: red; margin: 5px 0 10px 0; }
+        .success-message { color: green; font-weight: bold; margin-bottom: 15px; }
+        h1 { margin-bottom: 10px; }
+        hr { margin: 20px 0; border: 0; border-top: 1px solid #eee; }
+        label { font-weight: bold; font-size: 0.9em; color: #555; }
+
+        /* 掃描器區域樣式 */
+        #reader-container {
+            display: none; /* 預設隱藏 */
+            margin-bottom: 20px;
+            text-align: center;
+            border: 2px dashed #007bff;
+            padding: 10px;
+            background: #f0f8ff;
+        }
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>➕ 新增圖書</h1>
+    {% if success_message %}<p class="success-message">{{ success_message }}</p>{% endif %}
+    {% if error %}<p class="message-box">{{ error }}</p>{% endif %}
+    
+    <form method="POST" enctype="multipart/form-data">
+        <div id="reader-container">
+            <div id="reader"></div>
+            <button type="button" onclick="stopScanner()" style="margin-top: 10px; background-color: #dc3545; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px;">關閉鏡頭</button>
+        </div>
+
+        <label>ISBN (掃描或輸入):</label>
+        <div class="isbn-group">
+            <input type="text" id="isbn" name="isbn" onkeydown="handleKeydown(event)" placeholder="輸入後按 Enter 自動查詢">
+            <button type="button" onclick="startScanner()" style="padding: 8px 15px; cursor: pointer; background-color: #17a2b8; color: white; border: none; border-radius: 4px;">📷 掃描</button>
+            <button type="button" onclick="lookupBookData()" style="padding: 8px 15px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">查詢</button>
+        </div>
+        <div id="isbn-message" class="message-box"></div>
+        <div id="cover-preview" class="cover-preview"><img id="book-cover-img" src=""></div>
+        <input type="hidden" id="cover_url" name="cover_url">
+
+        <hr>
+
+        <label>書名 <span style="color:red">*</span>:</label>
+        <input type="text" id="title" name="title" required>
+
+        <div class="row">
+            <div>
+                <label>作者 <span style="color:red">*</span>:</label>
+                <input type="text" id="author" name="author" required>
+            </div>
+            <div>
+                <label>出版社:</label>
+                <input type="text" id="publisher" name="publisher">
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label>叢書名 (系列):</label>
+                <input type="text" id="series" name="series" placeholder="例如：哈利波特">
+            </div>
+            <div>
+                <label>集數:</label>
+                <input type="text" id="volume" name="volume" placeholder="例如：1, 2, 上, 下">
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label>分類:</label>
+                <select id="category" name="category">
+                    <option value="">--請選擇--</option>
+                    {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>印刷版本:</label>
+                <select id="print_version" name="print_version">
+                    <option value="">--不填--</option>
+                    <option value="首刷">首刷</option>
+                    <option value="豪華首刷">豪華首刷</option>
+                    <option value="再版">再版</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label>出版年:</label>
+                <input type="number" id="year" name="year">
+            </div>
+            <div>
+                <label>出版月:</label>
+                <select id="month" name="month">
+                    <option value="">--</option>
+                    {% for m in range(1, 13) %}<option value="{{ m }}">{{ m }}月</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <hr>
+        <div class="row">
+            <div>
+                <label>閱讀狀態:</label>
+                <select name="status">
+                    <option value="未讀">未讀</option>
+                    <option value="閱讀中">閱讀中</option>
+                    <option value="已讀完">已讀完</option>
+                    <option value="棄坑">棄坑</option>
+                </select>
+            </div>
+            <div>
+                <label>個人評分:</label>
+                <select name="rating">
+                    <option value="0">未評分</option>
+                    <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                    <option value="4">⭐⭐⭐⭐ (4)</option>
+                    <option value="3">⭐⭐⭐ (3)</option>
+                    <option value="2">⭐⭐ (2)</option>
+                    <option value="1">⭐ (1)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label>存放位置:</label>
+                <input type="text" name="location" placeholder="例如：書櫃A, 床頭">
+            </div>
+            <div>
+                <label>標籤 (Tags):</label>
+                <input type="text" name="tags" placeholder="例如：絕版, 簽名, 治癒系 (逗號分隔)">
+            </div>
+        </div>
+
+        <label>書籍大綱:</label>
+        <textarea id="description_input" name="description" rows="3"></textarea>
+
+        <label>備註:</label>
+        <textarea name="notes" rows="2"></textarea>
+        
+        <label>手動上傳封面 (選填):</label>
+        <input type="file" id="cover_file" name="cover_file" accept="image/*">
+
+        <button type="submit" style="background-color: #4CAF50; color: white; border:none; padding: 12px; cursor: pointer; font-size: 16px; margin-top: 10px;">儲存圖書</button>
+    </form>
+    <p><a href="{{ url_for('index') }}">返回清單</a></p>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => { document.getElementById('isbn').focus(); });
+        
+        // ---------------- 掃描器邏輯開始 ----------------
+        let html5QrCode;
+
+        function startScanner() {
+            const readerContainer = document.getElementById('reader-container');
+            readerContainer.style.display = 'block';
+
+            html5QrCode = new Html5Qrcode("reader");
+            
+            // 啟動掃描器，優先使用後置鏡頭 (environment)
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                {
+                    fps: 10,    // 每秒掃描次數
+                    qrbox: 250  // 掃描框大小
+                },
+                (decodedText, decodedResult) => {
+                    // 掃描成功的回調函式
+                    console.log(`Scan result: ${decodedText}`, decodedResult);
+                    
+                    // 1. 填入 ISBN
+                    document.getElementById('isbn').value = decodedText;
+                    
+                    // 2. 停止掃描並隱藏
+                    stopScanner();
+                    
+                    // 3. 自動觸發查詢
+                    lookupBookData();
+                },
+                (errorMessage) => {
+                    // 掃描中的錯誤 (通常不需要處理，因為每幀沒掃到都會報錯)
+                }
+            ).catch((err) => {
+                alert("無法啟動鏡頭，請確認您使用的是 HTTPS 協定或 localhost，並已授權鏡頭存取。");
+                console.error(err);
+                readerContainer.style.display = 'none';
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    document.getElementById('reader-container').style.display = 'none';
+                }).catch(err => {
+                    console.error("Failed to stop scanner", err);
+                });
+            } else {
+                document.getElementById('reader-container').style.display = 'none';
+            }
+        }
+        // ---------------- 掃描器邏輯結束 ----------------
+
+        function handleKeydown(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); 
+                const isbnInput = document.getElementById('isbn');
+                if (isbnInput.value.trim()) lookupBookData();
+                else isbnInput.focus();
+            }
+        }
+
+        function lookupBookData() {
+            const isbnInput = document.getElementById('isbn');
+            const isbn = isbnInput.value.trim();
+            const messageBox = document.getElementById('isbn-message');
+            const coverPreview = document.getElementById('cover-preview');
+            const coverImg = document.getElementById('book-cover-img');
+            
+            messageBox.textContent = '';
+            coverPreview.style.display = 'none';
+            document.getElementById('cover_file').value = '';
+
+            if (!isbn) { messageBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
+            messageBox.textContent = '查詢中...'; messageBox.style.color = 'blue';
+
+            fetch(`/api/lookup_isbn/${isbn}`)
+                .then(r => r.json().then(data => ({status: r.status, body: data})))
+                .then(({ status, body }) => {
+                    messageBox.textContent = ''; 
+                    if (status === 200) {
+                        document.getElementById('title').value = body.title || '';
+                        document.getElementById('author').value = body.author || '';
+                        document.getElementById('publisher').value = body.publisher || ''; 
+                        document.getElementById('year').value = body.year || '';
+                        document.getElementById('description_input').value = body.description || '';
+                        
+                        const monthSelect = document.getElementById('month');
+                        if (body.month) monthSelect.value = parseInt(body.month);
+                        
+                        document.getElementById('cover_url').value = body.cover_url || '';
+                        if (body.cover_url) {
+                            coverImg.src = body.cover_url;
+                            coverPreview.style.display = 'block';
+                        }
+                        messageBox.textContent = '查詢成功！'; messageBox.style.color = 'green';
+                    } else {
+                        messageBox.textContent = body.error || '查詢失敗'; messageBox.style.color = 'red';
+                    }
+                    isbnInput.focus();
+                })
+                .catch(e => { messageBox.textContent = '網路錯誤'; messageBox.style.color = 'red'; isbnInput.focus(); });
+        }
+    </script>
+</body>
+</html>
