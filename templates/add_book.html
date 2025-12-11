@@ -122,6 +122,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', (event) => { document.getElementById('isbn').focus(); });
         
+        // --- 掃描器 ---
         let html5QrCode;
         function startScanner() {
             const readerContainer = document.getElementById('reader-container');
@@ -151,6 +152,7 @@
             msgBox.textContent = '正在查詢...'; msgBox.style.color = 'blue';
             document.getElementById('cover-preview').style.display = 'none';
             document.getElementById('book-cover-img').src = "";
+            
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
             // 1. 伺服器查詢 (Google API)
@@ -172,19 +174,27 @@
                 });
         }
 
-        // ====== 前端爬蟲 ======
+        // ====== 前端爬蟲核心 (修正 URL) ======
         
-        // 2. 金石堂 (修復 URL 錯誤)
+        // 2. 金石堂
         function clientSideScrapeKingstone(isbn) {
             const msgBox = document.getElementById('isbn-message');
             const targetUrl = `https://www.kingstone.com.tw/search/key/${isbn}`;
-            // 修正：移除 proxy 後面多餘的斜線
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+            
+            // ****** 關鍵修正：確保 proxy 後面沒有斜線 ******
+            // 加上 &t=... 防止快取
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
+
+            console.log("Fetching Kingstone via Proxy:", proxyUrl); // 除錯用
 
             fetch(proxyUrl)
-                .then(r => { if (!r.ok) throw new Error("KS Failed"); return r.text(); })
+                .then(r => { 
+                    if (!r.ok) throw new Error("KS Failed: " + r.status); 
+                    return r.text(); 
+                })
                 .then(html => {
                     const doc = new DOMParser().parseFromString(html, "text/html");
+                    
                     const titleEl = doc.querySelector('h3.pdname_box a') || doc.querySelector('h1.pdname_box');
                     if (!titleEl) throw new Error("KS No Data");
 
@@ -199,6 +209,8 @@
                     }
                     const imgEl = doc.querySelector('img.lazyload') || doc.querySelector('.cover_box img');
                     const cover = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src')) : "";
+                    
+                    // 嘗試從列表頁抓簡介
                     const descEl = doc.querySelector('.pdintro_txt1');
                     const desc = descEl ? descEl.textContent.trim().substring(0, 300) + "..." : "";
 
@@ -206,60 +218,49 @@
                     msgBox.textContent = '瀏覽器查詢成功 (來源:金石堂)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
-                    console.log("Kingstone failed, trying Findbook...", err);
-                    msgBox.textContent = '金石堂無資料，嘗試抓取 Findbook...';
-                    clientSideScrapeFindbook(isbn);
+                    console.warn("Kingstone failed:", err);
+                    msgBox.textContent = '金石堂無資料，嘗試抓取三民書局...';
+                    clientSideScrapeSanmin(isbn);
                 });
         }
 
-        // 3. Findbook (找書網) - 結構簡單，成功率高
-        function clientSideScrapeFindbook(isbn) {
+        // 3. 三民書局 (Sanmin)
+        function clientSideScrapeSanmin(isbn) {
             const msgBox = document.getElementById('isbn-message');
-            // Findbook 的搜尋網址
-            const targetUrl = `http://findbook.tw/search?q=${isbn}&keyword_type=isbn`;
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+            const targetUrl = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
 
             fetch(proxyUrl)
-                .then(r => { if (!r.ok) throw new Error("Findbook Failed"); return r.text(); })
+                .then(r => { if (!r.ok) throw new Error("Sanmin Failed"); return r.text(); })
                 .then(html => {
                     const doc = new DOMParser().parseFromString(html, "text/html");
+                    const item = doc.querySelector('.SearchItem'); 
+                    if (!item) throw new Error("Sanmin No Data");
                     
-                    // Findbook 列表的第一個結果通常在 tbody tr
-                    const item = doc.querySelector('tbody tr');
-                    if (!item) throw new Error("Findbook No Data");
-
-                    // 書名 (第二個 td 的第一個連結)
-                    const link = item.querySelector('td:nth-child(2) a');
-                    if (!link) throw new Error("Findbook No Title");
+                    const titleEl = item.querySelector('.ProdName');
+                    const title = titleEl ? titleEl.textContent.trim() : "未知書名";
                     
-                    const title = link.getAttribute('title') || link.textContent.trim();
+                    const authorEl = item.querySelector('.Author');
+                    const author = authorEl ? authorEl.textContent.trim() : "未知作者";
                     
-                    // 作者與出版社在書名下方，格式較亂，這裡簡化處理
-                    // 嘗試從詳細頁面抓可能會被擋，所以只抓列表資訊
-                    let author = "未知作者";
-                    let publisher = "";
+                    const pubEl = item.querySelector('.Publisher');
+                    const publisher = pubEl ? pubEl.textContent.trim() : "";
                     
-                    // 嘗試解析該欄位的文字 (通常是: 作者：XXX \n 出版社：YYY)
-                    const infoText = item.querySelector('td:nth-child(2)').textContent;
-                    const authorMatch = infoText.match(/作者：(.*?)(出版社|$)/);
-                    if (authorMatch) author = authorMatch[1].trim();
-                    
-                    const pubMatch = infoText.match(/出版社：(.*?)(出版日期|$)/);
-                    if (pubMatch) publisher = pubMatch[1].trim();
-                    
-                    const dateMatch = infoText.match(/出版日期：(\d{4})\/(\d{1,2})/);
+                    const dateEl = item.querySelector('.PubDate');
                     let year = "", month = "";
-                    if (dateMatch) { year = dateMatch[1]; month = dateMatch[2]; }
+                    if (dateEl) {
+                        const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
+                        if (m) { year = m[1]; month = m[2]; }
+                    }
 
-                    // 封面
                     const imgEl = item.querySelector('img');
                     const cover = imgEl ? imgEl.getAttribute('src') : "";
 
-                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:Findbook)"});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:Findbook)'; msgBox.style.color = 'green';
+                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:三民書局)"});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:三民)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
-                    console.error("All failed", err);
+                    console.error("All failed:", err);
                     msgBox.textContent = '所有來源皆查無資料，請手動輸入。';
                     msgBox.style.color = 'red';
                 });
