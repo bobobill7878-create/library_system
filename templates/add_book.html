@@ -122,6 +122,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', (event) => { document.getElementById('isbn').focus(); });
         
+        // --- 掃描器 ---
         let html5QrCode;
         function startScanner() {
             const readerContainer = document.getElementById('reader-container');
@@ -153,7 +154,7 @@
             document.getElementById('book-cover-img').src = "";
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
-            // 1. 伺服器查詢 (Google)
+            // 1. 伺服器查詢 (Google/金石堂/博客來/國圖)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
@@ -161,102 +162,99 @@
                         fillData(body);
                         msgBox.textContent = '伺服器查詢成功！'; msgBox.style.color = 'green';
                     } else {
-                        // 2. 失敗 -> 瀏覽器查金石堂
-                        msgBox.textContent = '伺服器無資料，嘗試瀏覽器查詢 (金石堂)...';
-                        clientSideScrapeKingstone(isbn);
+                        // 2. 伺服器失敗 (IP被擋)，啟動瀏覽器前端查詢 (Findbook)
+                        msgBox.textContent = '伺服器無資料，啟動瀏覽器查詢 (Findbook)...';
+                        clientSideScrapeFindbook(isbn);
                     }
                 })
                 .catch(e => {
-                    msgBox.textContent = '連線錯誤，嘗試瀏覽器查詢...';
-                    clientSideScrapeKingstone(isbn);
+                    msgBox.textContent = '連線錯誤，轉向前端查詢...';
+                    clientSideScrapeFindbook(isbn);
                 });
         }
 
-        // ====== 前端爬蟲核心 (AllOrigins JSON 模式 - 不會報 400) ======
-        
-        // 2. 金石堂
-        function clientSideScrapeKingstone(isbn) {
+        // ====== 🦸‍♂️ 前端爬蟲救援：Findbook (透過 corsproxy.io) ======
+        // Findbook 是一個很輕量的網站，比較不會擋 Proxy
+        function clientSideScrapeFindbook(isbn) {
             const msgBox = document.getElementById('isbn-message');
-            const targetUrl = `https://www.kingstone.com.tw/search/key/${isbn}`;
-            // 使用 /get?url= 並加上時間戳記防止快取
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
+            const targetUrl = `http://findbook.tw/search?q=${isbn}&keyword_type=isbn`;
+            
+            // 使用最強的 corsproxy.io (格式: https://corsproxy.io/?<url>)
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
             fetch(proxyUrl)
-                .then(response => {
-                    if (!response.ok) throw new Error('Proxy Network Error');
-                    return response.json(); // 解析 JSON 包裹
+                .then(r => { 
+                    if (!r.ok) throw new Error("Findbook Network Error: " + r.status); 
+                    return r.text(); 
                 })
-                .then(data => {
-                    // 真正的 HTML 在 data.contents 裡面
-                    const html = data.contents;
-                    if (!html) throw new Error('Empty Response');
-
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, "text/html");
-                    
-                    const titleEl = doc.querySelector('h3.pdname_box a') || doc.querySelector('h1.pdname_box');
-                    if (!titleEl) throw new Error("KS No Data");
-
-                    const title = titleEl.getAttribute('title') || titleEl.textContent.trim();
-                    const author = (doc.querySelector('span.author a') || doc.querySelector('.basic_box .author a') || {}).textContent || "未知作者";
-                    const publisher = (doc.querySelector('span.publisher a') || doc.querySelector('.basic_box .publisher a') || {}).textContent || "";
-                    
-                    let year = "", month = "";
-                    const dateEl = doc.querySelector('span.pubdate') || doc.querySelector('.basic_box .pubdate');
-                    if (dateEl) {
-                        const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
-                        if (m) { year = m[1]; month = m[2]; }
-                    }
-                    const imgEl = doc.querySelector('img.lazyload') || doc.querySelector('.cover_box img');
-                    const cover = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src')) : "";
-                    
-                    const descEl = doc.querySelector('.pdintro_txt1');
-                    const desc = descEl ? descEl.textContent.trim().substring(0, 300) + "..." : "";
-
-                    fillData({title, author, publisher, year, month, cover_url: cover, description: desc});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:金石堂)'; msgBox.style.color = 'green';
-                })
-                .catch(err => {
-                    console.warn("Kingstone failed:", err);
-                    msgBox.textContent = '金石堂無資料，嘗試抓取讀冊(TaaZe)...';
-                    clientSideScrapeTaaZe(isbn);
-                });
-        }
-
-        // 3. 讀冊 TaaZe (備援)
-        function clientSideScrapeTaaZe(isbn) {
-            const msgBox = document.getElementById('isbn-message');
-            const targetUrl = `https://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D=${isbn}`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
-
-            fetch(proxyUrl)
-                .then(r => r.json())
-                .then(data => {
-                    const html = data.contents;
+                .then(html => {
                     const doc = new DOMParser().parseFromString(html, "text/html");
                     
-                    const item = doc.querySelector('.search_result_item');
-                    if (!item) throw new Error("TaaZe No Data");
-                    
-                    const titleEl = item.querySelector('.book_title_link');
-                    if (!titleEl) throw new Error("TaaZe No Title");
-                    
-                    const title = titleEl.textContent.trim();
-                    const author = (item.querySelector('.book_author') || {}).textContent || "未知作者";
-                    const publisher = (item.querySelector('.book_publisher') || {}).textContent || "";
-                    
-                    let year = "", month = "";
-                    const dateEl = item.querySelector('.book_publish_date');
-                    if (dateEl) {
-                        const m = dateEl.textContent.match(/(\d{4})-(\d{1,2})/);
-                        if (m) { year = m[1]; month = m[2]; }
-                    }
+                    // 解析 Findbook 列表
+                    // 第一個搜尋結果通常在 tbody > tr
+                    const item = doc.querySelector('table.search_list_table tbody tr');
+                    if (!item) throw new Error("Findbook No Data");
 
-                    const imgEl = item.querySelector('.book_img img');
+                    // 書名連結在第二個 td
+                    const link = item.querySelector('td:nth-child(2) a');
+                    if (!link) throw new Error("Findbook No Title");
+                    const title = link.getAttribute('title') || link.textContent.trim();
+
+                    // 作者與出版社、日期都在第二個 td 的文字裡
+                    const infoCell = item.querySelector('td:nth-child(2)');
+                    const infoText = infoCell.textContent;
+
+                    let author = "未知作者";
+                    const authorMatch = infoText.match(/作者：(.*?)(出版社|$)/);
+                    if (authorMatch) author = authorMatch[1].trim();
+
+                    let publisher = "";
+                    const pubMatch = infoText.match(/出版社：(.*?)(出版日期|$)/);
+                    if (pubMatch) publisher = pubMatch[1].trim();
+
+                    let year = "", month = "";
+                    const dateMatch = infoText.match(/出版日期：(\d{4})\/(\d{1,2})/);
+                    if (dateMatch) { year = dateMatch[1]; month = dateMatch[2]; }
+
+                    // 封面
+                    const imgEl = item.querySelector('img');
                     const cover = imgEl ? imgEl.getAttribute('src') : "";
 
-                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:讀冊)"});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:讀冊)'; msgBox.style.color = 'green';
+                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:Findbook)"});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:Findbook)'; msgBox.style.color = 'green';
+                })
+                .catch(err => {
+                    console.warn("Findbook failed:", err);
+                    msgBox.textContent = 'Findbook 無資料，嘗試 OpenLibrary...';
+                    clientSideOpenLibrary(isbn);
+                });
+        }
+
+        // 3. OpenLibrary (全球最大開源書庫，不需要 Proxy，無痛直連)
+        function clientSideOpenLibrary(isbn) {
+            const msgBox = document.getElementById('isbn-message');
+            const url = `https://openlibrary.org/isbn/${isbn}.json`;
+
+            fetch(url)
+                .then(r => {
+                    if (!r.ok) throw new Error("OpenLibrary Not Found");
+                    return r.json();
+                })
+                .then(data => {
+                    const title = data.title;
+                    const pubDate = data.publish_date || ""; 
+                    let year = "", month = "";
+                    const dateMatch = pubDate.match(/(\d{4})/);
+                    if (dateMatch) year = dateMatch[1];
+
+                    // 嘗試抓作者 (需要二次請求，這裡先略過或填未知)
+                    const publisher = data.publishers ? data.publishers[0] : "";
+                    
+                    // 封面
+                    const cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+
+                    fillData({title, author: "請手動輸入", publisher, year, month, cover_url: cover, description: "(來源:OpenLibrary)"});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:OpenLibrary)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
                     console.error("All failed:", err);
