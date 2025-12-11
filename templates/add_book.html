@@ -15,13 +15,11 @@
         
         input[type="text"], input[type="number"], select, input[type="file"], textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
         
-        .row { display: flex; gap: 15px; }
-        .row > div { flex: 1; }
-        
-        .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .row { display: flex; gap: 15px; } .row > div { flex: 1; }
+        .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; }
         .cover-preview img { width: 100%; display: block; }
         
-        .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; }
+        .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; white-space: pre-wrap; }
         .success-message { color: #28a745; font-weight: bold; margin-bottom: 15px; text-align: center; }
         
         h1 { margin-bottom: 20px; color: #333; }
@@ -31,7 +29,7 @@
         .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; transition: background 0.2s; color: white; }
         .btn-scan { background-color: #17a2b8; } .btn-scan:hover { background-color: #138496; }
         .btn-search { background-color: #007bff; } .btn-search:hover { background-color: #0056b3; }
-        .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; } .btn-submit:hover { background-color: #218838; }
+        .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; }
         .btn-close { background-color: #dc3545; margin-top: 10px; }
 
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
@@ -61,29 +59,23 @@
 
         <hr>
 
-        <label>書名 <span style="color:red">*</span>:</label>
-        <input type="text" id="title" name="title" required>
-
+        <label>書名 <span style="color:red">*</span>:</label><input type="text" id="title" name="title" required>
         <div class="row">
             <div><label>作者 <span style="color:red">*</span>:</label><input type="text" id="author" name="author" required></div>
             <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
         </div>
-
         <div class="row">
             <div><label>叢書名:</label><input type="text" id="series" name="series" placeholder="例如：藥師少女的獨語"></div>
             <div><label>集數:</label><input type="text" id="volume" name="volume" placeholder="例如：14"></div>
         </div>
-
         <div class="row">
-            <div>
-                <label>分類:</label>
+            <div><label>分類:</label>
                 <select id="category" name="category">
                     <option value="">--請選擇--</option>
                     {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
                 </select>
             </div>
-            <div>
-                <label>版本:</label>
+            <div><label>版本:</label>
                 <select id="print_version" name="print_version">
                     <option value="">--不填--</option>
                     <option value="首刷">首刷</option>
@@ -92,11 +84,9 @@
                 </select>
             </div>
         </div>
-
         <div class="row">
             <div><label>出版年:</label><input type="number" id="year" name="year"></div>
-            <div>
-                <label>出版月:</label>
+            <div><label>出版月:</label>
                 <select id="month" name="month">
                     <option value="">--</option>
                     {% for m in range(1, 13) %}<option value="{{ m }}">{{ m }}月</option>{% endfor %}
@@ -106,8 +96,7 @@
 
         <hr>
         <div class="row">
-            <div>
-                <label>狀態:</label>
+            <div><label>狀態:</label>
                 <select name="status">
                     <option value="未讀">未讀</option>
                     <option value="閱讀中">閱讀中</option>
@@ -115,8 +104,7 @@
                     <option value="棄坑">棄坑</option>
                 </select>
             </div>
-            <div>
-                <label>評分:</label>
+            <div><label>評分:</label>
                 <select name="rating">
                     <option value="0">未評分</option>
                     <option value="5">⭐⭐⭐⭐⭐</option>
@@ -127,16 +115,13 @@
                 </select>
             </div>
         </div>
-
         <div class="row">
             <div><label>位置:</label><input type="text" name="location"></div>
             <div><label>標籤:</label><input type="text" name="tags"></div>
         </div>
-
         <label>大綱:</label><textarea id="description_input" name="description" rows="3"></textarea>
         <label>備註:</label><textarea name="notes" rows="2"></textarea>
         <label>手動上傳封面:</label><input type="file" id="cover_file" name="cover_file" accept="image/*">
-
         <button type="submit" class="btn btn-submit">儲存圖書</button>
     </form>
     <p><a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">« 返回清單</a></p>
@@ -150,14 +135,13 @@
             readerContainer.style.display = 'block';
             if (html5QrCode) html5QrCode.clear().catch(e => console.error(e));
             html5QrCode = new Html5Qrcode("reader");
-            // 改為一般設定，相容性較高
             const config = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
             html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
                 document.getElementById('isbn').value = decodedText;
                 stopScanner();
                 lookupBookData();
             }, () => {}).catch(err => {
-                alert("無法啟動鏡頭，請確認權限或網址是否為 HTTPS");
+                alert("無法啟動鏡頭");
                 readerContainer.style.display = 'none';
             });
         }
@@ -165,26 +149,18 @@
             if (html5QrCode) html5QrCode.stop().then(() => { document.getElementById('reader-container').style.display = 'none'; }).catch(console.error);
             else document.getElementById('reader-container').style.display = 'none';
         }
-
-        function handleKeydown(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault(); 
-                lookupBookData();
-            }
-        }
+        function handleKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); lookupBookData(); } }
 
         function lookupBookData() {
             const isbnInput = document.getElementById('isbn');
             const isbn = isbnInput.value.trim().replace(/-/g, '');
             const msgBox = document.getElementById('isbn-message');
-            
             msgBox.textContent = '正在查詢...'; msgBox.style.color = 'blue';
             document.getElementById('cover-preview').style.display = 'none';
             document.getElementById('book-cover-img').src = "";
-            
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
-            // 1. 嘗試伺服器查詢 (Google API)
+            // 1. 伺服器查詢 (Google API)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
@@ -192,84 +168,101 @@
                         fillData(body);
                         msgBox.textContent = '伺服器查詢成功！'; msgBox.style.color = 'green';
                     } else {
-                        // 2. 伺服器失敗，啟動瀏覽器端爬蟲 (金石堂)
-                        msgBox.textContent = '伺服器無資料 (可能 IP 被擋)，正在透過瀏覽器查詢金石堂...';
+                        // 2. 伺服器失敗，轉向前端查詢 (金石堂)
+                        msgBox.textContent = '伺服器無資料，瀏覽器嘗試抓取金石堂...';
                         clientSideScrapeKingstone(isbn);
                     }
                 })
                 .catch(e => {
-                    msgBox.textContent = '伺服器錯誤，嘗試瀏覽器查詢...';
+                    msgBox.textContent = '連線錯誤，轉向前端查詢...';
                     clientSideScrapeKingstone(isbn);
                 });
         }
 
-        // ====== 🦸‍♂️ 瀏覽器端爬蟲：金石堂 (透過 allorigins.win) ======
+        // --- 前端爬蟲核心 (使用 CodeTabs Proxy) ---
+        // Proxy 格式: https://api.codetabs.com/v1/proxy?quest=<URL>
+        
+        // 2. 金石堂
         function clientSideScrapeKingstone(isbn) {
             const msgBox = document.getElementById('isbn-message');
-            
-            // 使用 allorigins.win，這比 corsproxy.io 穩定
             const targetUrl = `https://www.kingstone.com.tw/search/key/${isbn}`;
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
 
             fetch(proxyUrl)
-                .then(response => {
-                    if (!response.ok) throw new Error("Network response was not ok");
-                    return response.text();
-                })
+                .then(r => { if (!r.ok) throw new Error("KS Failed"); return r.text(); })
                 .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, "text/html");
+                    const doc = new DOMParser().parseFromString(html, "text/html");
                     
-                    // 解析金石堂 HTML
-                    // 嘗試找列表頁的第一個結果
-                    // 金石堂列表結構：h3.pdname_box > a
+                    // 金石堂可能在列表頁或詳情頁
                     const titleEl = doc.querySelector('h3.pdname_box a') || doc.querySelector('h1.pdname_box');
-                    
-                    if (!titleEl) {
-                        msgBox.textContent = '查無資料 (金石堂也找不到)。請手動輸入。';
-                        msgBox.style.color = 'red';
-                        return;
-                    }
+                    if (!titleEl) { throw new Error("KS No Data"); }
 
-                    // 抓取資料
                     const title = titleEl.getAttribute('title') || titleEl.textContent.trim();
-                    
-                    let author = "未知作者";
-                    const authorEl = doc.querySelector('span.author a') || doc.querySelector('.basic_box .author a');
-                    if (authorEl) author = authorEl.textContent.trim();
-                    
-                    let publisher = "";
-                    const pubEl = doc.querySelector('span.publisher a') || doc.querySelector('.basic_box .publisher a');
-                    if (pubEl) publisher = pubEl.textContent.trim();
+                    const author = (doc.querySelector('span.author a') || doc.querySelector('.basic_box .author a') || {}).textContent || "未知作者";
+                    const publisher = (doc.querySelector('span.publisher a') || doc.querySelector('.basic_box .publisher a') || {}).textContent || "";
                     
                     let year = "", month = "";
                     const dateEl = doc.querySelector('span.pubdate') || doc.querySelector('.basic_box .pubdate');
                     if (dateEl) {
-                        const dateMatch = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
-                        if (dateMatch) { year = dateMatch[1]; month = dateMatch[2]; }
+                        const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
+                        if (m) { year = m[1]; month = m[2]; }
                     }
                     
-                    let cover = "";
                     const imgEl = doc.querySelector('img.lazyload') || doc.querySelector('.cover_box img');
-                    if (imgEl) cover = imgEl.getAttribute('data-src') || imgEl.getAttribute('src');
-
-                    // 嘗試抓大綱
-                    let desc = "";
-                    const descEl = doc.querySelector('.pdintro_txt1');
-                    if (descEl) desc = descEl.textContent.trim().substring(0, 300) + "...";
-
-                    const data = {
-                        title: title, author: author, publisher: publisher,
-                        year: year, month: month, cover_url: cover, description: desc
-                    };
+                    const cover = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src')) : "";
                     
-                    fillData(data);
-                    msgBox.textContent = '瀏覽器查詢成功！(來源：金石堂)';
-                    msgBox.style.color = 'green';
+                    const descEl = doc.querySelector('.pdintro_txt1');
+                    const desc = descEl ? descEl.textContent.trim().substring(0, 300) + "..." : "";
+
+                    fillData({title, author, publisher, year, month, cover_url: cover, description: desc});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:金石堂)'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
-                    console.error("Client scrape error:", err);
-                    msgBox.textContent = '查詢失敗 (連線被拒)。請手動輸入。';
+                    console.log("Kingstone failed, trying Sanmin...", err);
+                    msgBox.textContent = '金石堂無資料，嘗試抓取三民書局...';
+                    clientSideScrapeSanmin(isbn); // 失敗則轉三民
+                });
+        }
+
+        // 3. 三民書局 (Sanmin) - 備援方案
+        function clientSideScrapeSanmin(isbn) {
+            const msgBox = document.getElementById('isbn-message');
+            const targetUrl = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+
+            fetch(proxyUrl)
+                .then(r => { if (!r.ok) throw new Error("Sanmin Failed"); return r.text(); })
+                .then(html => {
+                    const doc = new DOMParser().parseFromString(html, "text/html");
+                    
+                    const item = doc.querySelector('.SearchItem'); // 三民列表項目
+                    if (!item) throw new Error("Sanmin No Data");
+                    
+                    const titleEl = item.querySelector('.ProdName');
+                    const title = titleEl ? titleEl.textContent.trim() : "未知書名";
+                    
+                    const authorEl = item.querySelector('.Author');
+                    const author = authorEl ? authorEl.textContent.trim() : "未知作者";
+                    
+                    const pubEl = item.querySelector('.Publisher');
+                    const publisher = pubEl ? pubEl.textContent.trim() : "";
+                    
+                    const dateEl = item.querySelector('.PubDate');
+                    let year = "", month = "";
+                    if (dateEl) {
+                        const m = dateEl.textContent.match(/(\d{4})\/(\d{1,2})/);
+                        if (m) { year = m[1]; month = m[2]; }
+                    }
+
+                    const imgEl = item.querySelector('img');
+                    const cover = imgEl ? imgEl.getAttribute('src') : "";
+
+                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:三民書局)"});
+                    msgBox.textContent = '瀏覽器查詢成功 (來源:三民)'; msgBox.style.color = 'green';
+                })
+                .catch(err => {
+                    console.error("All failed", err);
+                    msgBox.textContent = '所有來源皆查無資料，請手動輸入。';
                     msgBox.style.color = 'red';
                 });
         }
@@ -280,21 +273,14 @@
             document.getElementById('publisher').value = data.publisher || ''; 
             document.getElementById('year').value = data.year || '';
             document.getElementById('description_input').value = data.description || '';
-            
             const monthSelect = document.getElementById('month');
             if (data.month) monthSelect.value = parseInt(data.month);
-            
             document.getElementById('cover_url').value = data.cover_url || '';
             if (data.cover_url) {
                 const img = document.getElementById('book-cover-img');
                 img.src = data.cover_url;
                 document.getElementById('cover-preview').style.display = 'block';
             }
-            
-            // 嘗試自動填入叢書名 (簡單邏輯：書名包含空格或數字前)
-            // 這裡不做太複雜的邏輯以免填錯
-            
-            document.getElementById('isbn').focus();
         }
     </script>
 </body>
