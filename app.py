@@ -10,9 +10,10 @@ import csv
 import io
 import re
 from bs4 import BeautifulSoup
-import cloudscraper
 import pandas as pd
 import urllib3
+# 🔥 引入最強偽裝套件
+from curl_cffi import requests as crequests
 
 # 忽略 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -65,20 +66,29 @@ class Book(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
 
 # ==========================================
-# 🔥 強力爬蟲工具區 (CloudScraper) 🔥
+# 🔥 核彈級爬蟲工具區 (curl_cffi) 🔥
 # ==========================================
-scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
+
+# 通用請求函式：模擬 Chrome 110 的指紋，繞過 WAF
+def safe_get(url):
+    try:
+        # impersonate="chrome110" 是關鍵，它會發送跟真實 Chrome 完全一樣的 TLS 封包
+        response = crequests.get(url, impersonate="chrome110", timeout=15)
+        return response
+    except Exception as e:
+        print(f"Request Error: {e}")
+        return None
 
 # 1. MOMO 購物網 (救援主力)
 def scrape_momo(isbn):
     print(f">>> [MOMO] 開始查詢: {isbn}")
     url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
     try:
-        res = scraper.get(url, timeout=10)
-        if res.status_code != 200: return None
+        res = safe_get(url)
+        if not res or res.status_code != 200: return None
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # MOMO 搜尋結果結構 (手機版)
+        # MOMO 搜尋結果
         item = soup.select_one('.goodsItem')
         if not item: 
             print(">>> [MOMO] 未找到項目")
@@ -86,66 +96,104 @@ def scrape_momo(isbn):
 
         title = item.select_one('.prdName').text.strip()
         
-        # 進入詳情頁抓更多資料
+        # 進入詳情頁
         detail_link = item.select_one('a')['href']
+        author = "未知作者"
+        publisher = ""
+        year, month = None, None
+        cover = ""
+        desc = ""
+
         if detail_link:
             if not detail_link.startswith("http"): 
                 detail_link = "https://m.momoshop.com.tw" + detail_link
             
-            d_res = scraper.get(detail_link, timeout=10)
-            d_soup = BeautifulSoup(d_res.text, 'html.parser')
-            
-            author = "未知作者"
-            publisher = ""
-            year, month = None, None
-            
-            content_area = d_soup.select_one('.Area02') or d_soup.select_one('.attributesTable')
-            if content_area:
-                text = content_area.get_text()
-                pub_match = re.search(r'出版社[：:]\s*(.+)', text)
-                if pub_match: publisher = pub_match.group(1).strip()
-                auth_match = re.search(r'作者[：:]\s*(.+)', text)
-                if auth_match: author = auth_match.group(1).strip()
-                date_match = re.search(r'出版日[：:]\s*(\d{4})[\/-](\d{1,2})', text)
-                if date_match: year, month = date_match.group(1), date_match.group(2)
+            d_res = safe_get(detail_link)
+            if d_res:
+                d_soup = BeautifulSoup(d_res.text, 'html.parser')
+                
+                content_area = d_soup.select_one('.Area02') or d_soup.select_one('.attributesTable')
+                if content_area:
+                    text = content_area.get_text()
+                    pub_match = re.search(r'出版社[：:]\s*(.+)', text)
+                    if pub_match: publisher = pub_match.group(1).strip()
+                    auth_match = re.search(r'作者[：:]\s*(.+)', text)
+                    if auth_match: author = auth_match.group(1).strip()
+                    date_match = re.search(r'出版日[：:]\s*(\d{4})[\/-](\d{1,2})', text)
+                    if date_match: year, month = date_match.group(1), date_match.group(2)
 
-            img = d_soup.select_one('.swiper-slide img')
-            cover = img.get('src') if img else ""
-            
-            desc = ""
-            desc_area = d_soup.select_one('.Area03')
-            if desc_area: desc = desc_area.get_text(strip=True)[:500]
+                img = d_soup.select_one('.swiper-slide img')
+                if img: cover = img.get('src')
+                
+                desc_area = d_soup.select_one('.Area03')
+                if desc_area: desc = desc_area.get_text(strip=True)[:500]
 
-            return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": desc}
+        return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": desc}
             
-        return None
     except Exception as e:
         print(f">>> [MOMO] 錯誤: {e}")
         return None
 
-# 2. 三民書局
+# 2. 三民書局 (非常適合 curl_cffi)
 def scrape_sanmin(isbn):
     print(f">>> [三民] 開始查詢: {isbn}")
     url = f"https://www.sanmin.com.tw/search/index?ct=all&k={isbn}"
     try:
-        res = scraper.get(url, timeout=15)
+        res = safe_get(url)
+        if not res: return None
         soup = BeautifulSoup(res.text, 'html.parser')
+        
         item = soup.select_one('.SearchItem')
         if not item: return None
+        
         title = item.select_one('.ProdName').text.strip()
         author = item.select_one('.Author').text.strip()
         publisher = item.select_one('.Publisher').text.strip()
+        
         year, month = None, None
         date_tag = item.select_one('.PubDate')
         if date_tag:
             match = re.search(r'(\d{4})[\/-](\d{1,2})', date_tag.text)
             if match: year, month = match.group(1), match.group(2)
+            
         img = item.select_one('img')
         cover = img.get('src') if img else ""
+        
         return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": "(來源:三民書局)"}
     except: return None
 
-# 3. Google Books API
+# 3. 博客來 (需要 curl_cffi 繞過 WAF)
+def scrape_books_com_tw(isbn):
+    print(f">>> [博客來] 開始查詢: {isbn}")
+    url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
+    try:
+        res = safe_get(url)
+        if not res: return None
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        item = soup.select_one('.table-search-tbody .table-td') or soup.select_one('li.item')
+        if not item: return None
+
+        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
+        if not title_tag: return None
+        title = title_tag.get('title') or title_tag.text.strip()
+        
+        author = (item.select_one('a[rel="go_author"]') or {}).text or "未知"
+        publisher = (item.select_one('a[rel="go_publisher"]') or {}).text or ""
+        
+        text = item.get_text()
+        year, month = None, None
+        match = re.search(r'(\d{4})[\/-](\d{1,2})', text)
+        if match: year, month = match.group(1), match.group(2)
+        
+        img = item.select_one('img')
+        cover = img.get('data-src') or img.get('src') or ""
+        if cover and not cover.startswith("http"): cover = "https:" + cover
+        
+        return {"success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": cover, "description": ""}
+    except: return None
+
+# 4. Google Books API (不需要 cffi，普通 requests 即可)
 def scrape_google(isbn):
     try:
         api_url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
@@ -460,7 +508,7 @@ def search_keyword(keyword):
     except: pass
     return jsonify(results)
 
-# ====== 🔥 診斷路由 (Check logs) ======
+# ====== 🔥 診斷路由 (請訪問 /api/debug_scrape/ISBN) 🔥 ======
 @app.route('/api/debug_scrape/<isbn>', methods=['GET'])
 def debug_scrape(isbn):
     clean_isbn = isbn.replace('-', '').strip()
@@ -482,7 +530,7 @@ def debug_scrape(isbn):
 
     return jsonify(result)
 
-# ====== 智慧查詢路由 (MOMO -> 三民 -> Google) ======
+# ====== 智慧查詢路由 (MOMO -> 三民 -> 博客來 -> Google) ======
 @app.route('/api/lookup_isbn/<isbn>', methods=['GET'])
 def lookup_isbn(isbn):
     if not isbn: return jsonify({"error": "ISBN 碼不可為空"}), 400
@@ -497,7 +545,11 @@ def lookup_isbn(isbn):
     sanmin_data = scrape_sanmin(clean_isbn)
     if sanmin_data: return jsonify(sanmin_data)
 
-    # 3. Google API (補充外文)
+    # 3. 博客來
+    books_tw = scrape_books_com_tw(clean_isbn)
+    if books_tw: return jsonify(books_tw)
+
+    # 4. Google API (補充外文)
     google_data = scrape_google(clean_isbn)
     if google_data: return jsonify(google_data)
 
