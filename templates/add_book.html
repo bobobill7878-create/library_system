@@ -20,11 +20,13 @@
         h1 { margin-bottom: 20px; color: #333; }
         hr { margin: 25px 0; border: 0; border-top: 1px solid #eee; }
         label { font-weight: 600; font-size: 0.9em; color: #555; margin-bottom: 5px; display: block; }
+        
         .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; transition: background 0.2s; color: white; }
         .btn-scan { background-color: #17a2b8; } .btn-scan:hover { background-color: #138496; }
         .btn-search { background-color: #007bff; } .btn-search:hover { background-color: #0056b3; }
         .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; }
         .btn-close { background-color: #dc3545; margin-top: 10px; }
+        
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
         #reader { width: 100%; max-width: 400px; margin: 0 auto; }
 
@@ -52,13 +54,14 @@
     <form method="POST" enctype="multipart/form-data">
         <div id="reader-container">
             <div id="reader"></div>
+            <p style="font-size: 12px; color: #666;">請將條碼置於框線內，若模糊請前後移動手機</p>
             <button type="button" class="btn btn-close" onclick="stopScanner()">關閉鏡頭</button>
         </div>
 
         <label>ISBN (掃描或輸入):</label>
         <div class="isbn-group">
             <input type="text" id="isbn" name="isbn" onkeydown="handleKeydown(event)" placeholder="輸入 ISBN 後按 Enter">
-            <button type="button" class="btn btn-scan" onclick="startScanner()">📷 掃描</button>
+            <button type="button" class="btn btn-scan" onclick="startScanner()">📷 掃描條碼</button>
             <button type="button" class="btn btn-search" onclick="lookupBookData()">查詢</button>
         </div>
         <div id="isbn-message" class="message-box"></div>
@@ -155,21 +158,52 @@
             const readerContainer = document.getElementById('reader-container');
             readerContainer.style.display = 'block';
             if (html5QrCode) html5QrCode.clear().catch(e => console.error(e));
+            
             html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
-            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+            
+            // ****** 一維條碼優化設定 ******
+            const config = { 
+                fps: 15, // 提高偵測幀率
+                // 設定為扁長方形 (寬 300, 高 100)，適合掃條碼
+                qrbox: { width: 300, height: 100 }, 
+                aspectRatio: 1.0,
+                // 優先使用瀏覽器原生條碼偵測 (Android 效果佳)
+                useBarCodeDetectorIfSupported: true,
+                // 只支援一維條碼 (EAN-13, EAN-8, CODE-128)，排除 QR Code 以提升效能
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.CODE_128 
+                ]
+            };
+            
+            // 相機設定：不強制特定解析度，讓瀏覽器自動選擇最佳後置鏡頭
+            const cameraConfig = { facingMode: "environment" };
+
+            html5QrCode.start(cameraConfig, config, (decodedText) => {
+                // 掃描成功
                 document.getElementById('isbn').value = decodedText;
                 stopScanner();
-                lookupBookData();
-            }, () => {}).catch(err => {
-                alert("無法啟動鏡頭");
+                lookupBookData(); // 自動觸發查詢
+            }, (errorMessage) => {
+                // 掃描失敗 (忽略，避免 console 刷屏)
+            }).catch(err => {
+                alert("無法啟動鏡頭，請確認權限或使用 HTTPS 連線。");
                 readerContainer.style.display = 'none';
             });
         }
+
         function stopScanner() {
-            if (html5QrCode) html5QrCode.stop().then(() => { document.getElementById('reader-container').style.display = 'none'; }).catch(console.error);
-            else document.getElementById('reader-container').style.display = 'none';
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => { 
+                    html5QrCode.clear();
+                    document.getElementById('reader-container').style.display = 'none'; 
+                }).catch(console.error);
+            } else {
+                document.getElementById('reader-container').style.display = 'none';
+            }
         }
+
         function handleKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); lookupBookData(); } }
 
         // --- ISBN 查詢 ---
@@ -191,7 +225,6 @@
                         fillData(body);
                         msgBox.textContent = '查詢成功！'; msgBox.style.color = 'green';
                     } else {
-                        // 這裡省略了前端爬蟲以簡化代碼，您可自行決定是否保留 V5.0 的前端爬蟲
                         msgBox.textContent = '伺服器無資料，請嘗試書名搜尋或手動輸入。';
                         msgBox.style.color = 'red';
                     }
@@ -201,7 +234,7 @@
                 });
         }
 
-        // --- 書名搜尋 ---
+        // --- 書名搜尋 (V7.0 功能) ---
         function searchByTitle() {
             const titleInput = document.getElementById('title');
             const keyword = titleInput.value.trim();
@@ -219,14 +252,11 @@
                         listDiv.innerHTML = '<p style="text-align:center;">找不到相關書籍。</p>';
                         return;
                     }
-                    
                     data.forEach(book => {
                         const item = document.createElement('div');
                         item.className = 'search-result-item';
                         item.onclick = function() { selectBook(book); };
-                        
                         const img = book.cover_url ? `<img src="${book.cover_url}">` : '<div style="width:60px;height:80px;background:#eee;display:flex;align-items:center;justify-content:center;">無圖</div>';
-                        
                         item.innerHTML = `
                             ${img}
                             <div class="search-result-info">
@@ -245,25 +275,13 @@
                 });
         }
 
-        function closeTitleModal() {
-            document.getElementById('titleSearchModal').style.display = 'none';
-        }
-
-        // 點擊 Modal 外部關閉
-        window.onclick = function(event) {
-            const modal = document.getElementById('titleSearchModal');
-            if (event.target == modal) {
-                modal.style.display = "none";
-            }
-        }
+        function closeTitleModal() { document.getElementById('titleSearchModal').style.display = 'none'; }
+        window.onclick = function(event) { if (event.target == document.getElementById('titleSearchModal')) closeTitleModal(); }
 
         function selectBook(book) {
             fillData(book);
             closeTitleModal();
-            // 如果選到的書有 ISBN，填入並聚焦
-            if (book.isbn) {
-                document.getElementById('isbn').value = book.isbn;
-            }
+            if (book.isbn) document.getElementById('isbn').value = book.isbn;
         }
 
         function fillData(data) {
@@ -272,10 +290,8 @@
             document.getElementById('publisher').value = data.publisher || ''; 
             document.getElementById('year').value = data.year || '';
             document.getElementById('description_input').value = data.description || '';
-            
             const monthSelect = document.getElementById('month');
             if (data.month) monthSelect.value = parseInt(data.month);
-            
             document.getElementById('cover_url').value = data.cover_url || '';
             if (data.cover_url) {
                 const img = document.getElementById('book-cover-img');
