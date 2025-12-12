@@ -176,26 +176,91 @@
             document.getElementById('book-cover-img').src = "";
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
-            // 1. 伺服器查詢 (Google/MOMO/三民)
+            // 1. 後端查詢 (MOMO/三民)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
                     if (status === 200) {
                         fillData(body);
-                        msgBox.textContent = '查詢成功！'; msgBox.style.color = 'green';
+                        msgBox.textContent = '伺服器查詢成功！'; msgBox.style.color = 'green';
                     } else {
-                        // 2. 失敗 -> 瀏覽器查三民書局
-                        msgBox.textContent = '伺服器無資料，嘗試瀏覽器查詢 (三民)...';
-                        clientSideScrapeSanmin(isbn);
+                        // 2. 失敗 -> 前端直連 Google (不走後端，不走代理)
+                        msgBox.textContent = '伺服器失敗，瀏覽器直連 Google...';
+                        directGoogleSearch(isbn);
                     }
                 })
                 .catch(e => {
-                    msgBox.textContent = '連線錯誤，嘗試瀏覽器查詢...';
+                    msgBox.textContent = '連線錯誤，轉向前端查詢...';
+                    directGoogleSearch(isbn);
+                });
+        }
+
+        // ====== 🦸‍♂️ 前端救援 (直連 API) ======
+
+        // 2. 前端直連 Google Books API (不透過 Proxy，不會被擋！)
+        function directGoogleSearch(isbn) {
+            const msgBox = document.getElementById('isbn-message');
+            // 注意：這裡直接呼叫 Google API，不經過後端
+            fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.totalItems > 0 && data.items) {
+                        const v = data.items[0].volumeInfo;
+                        const pd = v.publishedDate || "";
+                        let y = "", m = "";
+                        if(pd) { y = pd.split('-')[0]; m = pd.split('-')[1] || ""; }
+                        
+                        let cover = "";
+                        if (v.imageLinks) { cover = v.imageLinks.thumbnail || v.imageLinks.smallThumbnail || ""; }
+                        if (cover && cover.startsWith("http://")) cover = cover.replace("http://", "https://");
+
+                        fillData({
+                            title: v.title,
+                            author: (v.authors ? v.authors.join(", ") : ""),
+                            publisher: v.publisher || "",
+                            year: y, month: m,
+                            cover_url: cover,
+                            description: v.description || ""
+                        });
+                        msgBox.textContent = 'Google 直連查詢成功！'; msgBox.style.color = 'green';
+                    } else {
+                        // Google 沒資料，換 OpenLibrary
+                        msgBox.textContent = 'Google 無資料，嘗試 OpenLibrary...';
+                        directOpenLibrary(isbn);
+                    }
+                })
+                .catch(err => {
+                    msgBox.textContent = 'Google 連線失敗，嘗試 OpenLibrary...';
+                    directOpenLibrary(isbn);
+                });
+        }
+
+        // 3. 前端直連 OpenLibrary (不透過 Proxy)
+        function directOpenLibrary(isbn) {
+            const msgBox = document.getElementById('isbn-message');
+            fetch(`https://openlibrary.org/isbn/${isbn}.json`)
+                .then(r => { if(!r.ok) throw new Error("404"); return r.json(); })
+                .then(data => {
+                    const pd = data.publish_date || "";
+                    let y = pd.match(/\d{4}/) ? pd.match(/\d{4}/)[0] : "";
+                    
+                    fillData({
+                        title: data.title,
+                        author: "請手動輸入", // OL 作者格式較複雜
+                        publisher: (data.publishers ? data.publishers[0] : ""),
+                        year: y, month: "",
+                        cover_url: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
+                        description: "(來源:OpenLibrary)"
+                    });
+                    msgBox.textContent = 'OpenLibrary 查詢成功！'; msgBox.style.color = 'green';
+                })
+                .catch(err => {
+                    msgBox.textContent = 'OpenLibrary 無資料，嘗試三民...';
                     clientSideScrapeSanmin(isbn);
                 });
         }
 
-        // 前端爬蟲備援 (AllOrigins + 三民)
+        // 4. 前端爬蟲 (AllOrigins + 三民) - 最後手段
         function clientSideScrapeSanmin(isbn) {
             const msgBox = document.getElementById('isbn-message');
             const targetUrl = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
@@ -218,36 +283,7 @@
                 }
                 const img = (item.querySelector('img') || {}).src || "";
                 fillData({title, author, publisher, year, month, cover_url: img, description: "(來源:三民)"});
-                msgBox.textContent = '瀏覽器查詢成功！'; msgBox.style.color = 'green';
-            }).catch(err => {
-                msgBox.textContent = '三民無資料，嘗試抓取讀冊...';
-                clientSideScrapeTaaZe(isbn);
-            });
-        }
-
-        function clientSideScrapeTaaZe(isbn) {
-            const msgBox = document.getElementById('isbn-message');
-            const targetUrl = `https://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D=${isbn}`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
-
-            fetch(proxyUrl).then(r => r.json()).then(data => {
-                const doc = new DOMParser().parseFromString(data.contents, "text/html");
-                const item = doc.querySelector('.search_result_item');
-                if (!item) throw new Error("No Data");
-                
-                const title = (item.querySelector('.book_title_link') || {}).textContent || "";
-                const author = (item.querySelector('.book_author') || {}).textContent || "";
-                const publisher = (item.querySelector('.book_publisher') || {}).textContent || "";
-                let year = "", month = "";
-                const dateEl = item.querySelector('.book_publish_date');
-                if (dateEl) {
-                    const m = dateEl.textContent.match(/(\d{4})-(\d{1,2})/);
-                    if (m) { year = m[1]; month = m[2]; }
-                }
-                const img = (item.querySelector('.book_img img') || {}).src || "";
-                
-                fillData({title, author, publisher, year, month, cover_url: img, description: "(來源:讀冊)"});
-                msgBox.textContent = '瀏覽器查詢成功！'; msgBox.style.color = 'green';
+                msgBox.textContent = '瀏覽器查詢成功 (三民)！'; msgBox.style.color = 'green';
             }).catch(err => {
                 msgBox.textContent = '查無資料，請嘗試關鍵字搜尋或手動輸入。'; msgBox.style.color = 'red';
             });
@@ -261,24 +297,44 @@
             listDiv.innerHTML = '<p style="text-align:center; padding:20px;">搜尋中...</p>';
             document.getElementById('titleSearchModal').style.display = 'block';
 
-            fetch(`/api/search_keyword/${encodeURIComponent(keyword)}`)
+            // 這裡也改用前端直連 Google，避開後端被擋
+            fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(keyword)}&maxResults=20`)
                 .then(r => r.json())
                 .then(data => {
                     listDiv.innerHTML = '';
-                    if (data.length === 0) { listDiv.innerHTML = '<p style="text-align:center;">找不到相關書籍。</p>'; return; }
-                    data.forEach(book => {
-                        const item = document.createElement('div');
-                        item.className = 'search-result-item';
-                        item.onclick = function() { selectBook(book); };
-                        const img = book.cover_url ? `<img src="${book.cover_url}">` : '<div style="width:60px;height:80px;background:#eee;"></div>';
-                        item.innerHTML = `${img}<div class="search-result-info"><h4>${book.title}</h4><p>${book.author}</p><p>${book.year || '-'} | ${book.publisher || '-'}</p></div>`;
-                        listDiv.appendChild(item);
+                    if (!data.items || data.items.length === 0) { listDiv.innerHTML = '<p style="text-align:center;">找不到相關書籍。</p>'; return; }
+                    data.items.forEach(item => {
+                        const v = item.volumeInfo;
+                        let isbn = "";
+                        if(v.industryIdentifiers) {
+                            const ident = v.industryIdentifiers.find(i => i.type === 'ISBN_13') || v.industryIdentifiers[0];
+                            isbn = ident ? ident.identifier : "";
+                        }
+                        let cover = "";
+                        if (v.imageLinks) cover = v.imageLinks.thumbnail || v.imageLinks.smallThumbnail || "";
+                        if (cover.startsWith("http://")) cover = cover.replace("http://", "https://");
+
+                        const div = document.createElement('div');
+                        div.className = 'search-result-item';
+                        div.onclick = function() { 
+                            fillData({
+                                title: v.title,
+                                author: (v.authors ? v.authors.join(", ") : ""),
+                                publisher: v.publisher || "",
+                                year: (v.publishedDate ? v.publishedDate.split('-')[0] : ""),
+                                isbn: isbn, cover_url: cover, description: v.description || ""
+                            });
+                            closeTitleModal();
+                            if(isbn) document.getElementById('isbn').value = isbn;
+                        };
+                        const imgTag = cover ? `<img src="${cover}">` : '<div style="width:60px;height:80px;background:#eee;"></div>';
+                        div.innerHTML = `${imgTag}<div class="search-result-info"><h4>${v.title}</h4><p>${v.authors ? v.authors.join(", ") : ""}</p><p>${v.publishedDate || '-'} | ${v.publisher || '-'}</p></div>`;
+                        listDiv.appendChild(div);
                     });
                 }).catch(err => { listDiv.innerHTML = '<p>搜尋錯誤</p>'; });
         }
 
         function closeTitleModal() { document.getElementById('titleSearchModal').style.display = 'none'; }
-        function selectBook(book) { fillData(book); closeTitleModal(); if (book.isbn) document.getElementById('isbn').value = book.isbn; }
         window.onclick = function(event) { if (event.target == document.getElementById('titleSearchModal')) closeTitleModal(); }
 
         function fillData(data) {
