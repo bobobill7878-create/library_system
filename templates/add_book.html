@@ -27,6 +27,21 @@
         .btn-close { background-color: #dc3545; margin-top: 10px; }
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
         #reader { width: 100%; max-width: 400px; margin: 0 auto; }
+
+        /* 書名輸入框群組 */
+        .title-group { display: flex; gap: 10px; align-items: flex-start; }
+        .title-group input { flex-grow: 1; }
+
+        /* Modal CSS */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; position: relative; }
+        .close-modal { position: absolute; right: 15px; top: 10px; font-size: 24px; cursor: pointer; color: #aaa; }
+        .close-modal:hover { color: #000; }
+        .search-result-item { display: flex; gap: 15px; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
+        .search-result-item:hover { background-color: #f5f5f5; }
+        .search-result-item img { width: 60px; height: auto; object-fit: cover; border-radius: 4px; }
+        .search-result-info h4 { margin: 0 0 5px 0; font-size: 16px; color: #007bff; }
+        .search-result-info p { margin: 2px 0; font-size: 13px; color: #666; }
     </style>
 </head>
 <body>
@@ -52,7 +67,12 @@
 
         <hr>
 
-        <label>書名 <span style="color:red">*</span>:</label><input type="text" id="title" name="title" required>
+        <label>書名 <span style="color:red">*</span>:</label>
+        <div class="title-group">
+            <input type="text" id="title" name="title" required placeholder="輸入書名後點搜尋">
+            <button type="button" class="btn btn-search" onclick="searchByTitle()" style="margin-bottom: 15px;">🔍 搜尋</button>
+        </div>
+
         <div class="row">
             <div><label>作者 <span style="color:red">*</span>:</label><input type="text" id="author" name="author" required></div>
             <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
@@ -119,10 +139,17 @@
     </form>
     <p><a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">« 返回清單</a></p>
 
+    <div id="titleSearchModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeTitleModal()">&times;</span>
+            <h2 style="margin-top: 0; color: #333;">📚 搜尋結果</h2>
+            <div id="search-results-list"></div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', (event) => { document.getElementById('isbn').focus(); });
         
-        // --- 掃描器 ---
         let html5QrCode;
         function startScanner() {
             const readerContainer = document.getElementById('reader-container');
@@ -145,122 +172,98 @@
         }
         function handleKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); lookupBookData(); } }
 
+        // --- ISBN 查詢 ---
         function lookupBookData() {
             const isbnInput = document.getElementById('isbn');
             const isbn = isbnInput.value.trim().replace(/-/g, '');
             const msgBox = document.getElementById('isbn-message');
-            msgBox.textContent = '正在查詢...'; msgBox.style.color = 'blue';
+            msgBox.textContent = '正在查詢 (伺服器)...'; msgBox.style.color = 'blue';
             document.getElementById('cover-preview').style.display = 'none';
             document.getElementById('book-cover-img').src = "";
+            
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
-            // 1. 伺服器查詢 (Google/金石堂/博客來/國圖)
+            // 伺服器查詢
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
                     if (status === 200) {
                         fillData(body);
-                        msgBox.textContent = '伺服器查詢成功！'; msgBox.style.color = 'green';
+                        msgBox.textContent = '查詢成功！'; msgBox.style.color = 'green';
                     } else {
-                        // 2. 伺服器失敗 (IP被擋)，啟動瀏覽器前端查詢 (Findbook)
-                        msgBox.textContent = '伺服器無資料，啟動瀏覽器查詢 (Findbook)...';
-                        clientSideScrapeFindbook(isbn);
+                        // 這裡省略了前端爬蟲以簡化代碼，您可自行決定是否保留 V5.0 的前端爬蟲
+                        msgBox.textContent = '伺服器無資料，請嘗試書名搜尋或手動輸入。';
+                        msgBox.style.color = 'red';
                     }
                 })
                 .catch(e => {
-                    msgBox.textContent = '連線錯誤，轉向前端查詢...';
-                    clientSideScrapeFindbook(isbn);
+                    msgBox.textContent = '連線錯誤。';
                 });
         }
 
-        // ====== 🦸‍♂️ 前端爬蟲救援：Findbook (透過 corsproxy.io) ======
-        // Findbook 是一個很輕量的網站，比較不會擋 Proxy
-        function clientSideScrapeFindbook(isbn) {
-            const msgBox = document.getElementById('isbn-message');
-            const targetUrl = `http://findbook.tw/search?q=${isbn}&keyword_type=isbn`;
-            
-            // 使用最強的 corsproxy.io (格式: https://corsproxy.io/?<url>)
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        // --- 書名搜尋 ---
+        function searchByTitle() {
+            const titleInput = document.getElementById('title');
+            const keyword = titleInput.value.trim();
+            if (!keyword) { alert("請先輸入書名關鍵字"); return; }
 
-            fetch(proxyUrl)
-                .then(r => { 
-                    if (!r.ok) throw new Error("Findbook Network Error: " + r.status); 
-                    return r.text(); 
-                })
-                .then(html => {
-                    const doc = new DOMParser().parseFromString(html, "text/html");
-                    
-                    // 解析 Findbook 列表
-                    // 第一個搜尋結果通常在 tbody > tr
-                    const item = doc.querySelector('table.search_list_table tbody tr');
-                    if (!item) throw new Error("Findbook No Data");
+            const listDiv = document.getElementById('search-results-list');
+            listDiv.innerHTML = '<p style="text-align:center; padding:20px;">搜尋中...</p>';
+            document.getElementById('titleSearchModal').style.display = 'block';
 
-                    // 書名連結在第二個 td
-                    const link = item.querySelector('td:nth-child(2) a');
-                    if (!link) throw new Error("Findbook No Title");
-                    const title = link.getAttribute('title') || link.textContent.trim();
-
-                    // 作者與出版社、日期都在第二個 td 的文字裡
-                    const infoCell = item.querySelector('td:nth-child(2)');
-                    const infoText = infoCell.textContent;
-
-                    let author = "未知作者";
-                    const authorMatch = infoText.match(/作者：(.*?)(出版社|$)/);
-                    if (authorMatch) author = authorMatch[1].trim();
-
-                    let publisher = "";
-                    const pubMatch = infoText.match(/出版社：(.*?)(出版日期|$)/);
-                    if (pubMatch) publisher = pubMatch[1].trim();
-
-                    let year = "", month = "";
-                    const dateMatch = infoText.match(/出版日期：(\d{4})\/(\d{1,2})/);
-                    if (dateMatch) { year = dateMatch[1]; month = dateMatch[2]; }
-
-                    // 封面
-                    const imgEl = item.querySelector('img');
-                    const cover = imgEl ? imgEl.getAttribute('src') : "";
-
-                    fillData({title, author, publisher, year, month, cover_url: cover, description: "(來源:Findbook)"});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:Findbook)'; msgBox.style.color = 'green';
-                })
-                .catch(err => {
-                    console.warn("Findbook failed:", err);
-                    msgBox.textContent = 'Findbook 無資料，嘗試 OpenLibrary...';
-                    clientSideOpenLibrary(isbn);
-                });
-        }
-
-        // 3. OpenLibrary (全球最大開源書庫，不需要 Proxy，無痛直連)
-        function clientSideOpenLibrary(isbn) {
-            const msgBox = document.getElementById('isbn-message');
-            const url = `https://openlibrary.org/isbn/${isbn}.json`;
-
-            fetch(url)
-                .then(r => {
-                    if (!r.ok) throw new Error("OpenLibrary Not Found");
-                    return r.json();
-                })
+            fetch(`/api/search_keyword/${encodeURIComponent(keyword)}`)
+                .then(r => r.json())
                 .then(data => {
-                    const title = data.title;
-                    const pubDate = data.publish_date || ""; 
-                    let year = "", month = "";
-                    const dateMatch = pubDate.match(/(\d{4})/);
-                    if (dateMatch) year = dateMatch[1];
-
-                    // 嘗試抓作者 (需要二次請求，這裡先略過或填未知)
-                    const publisher = data.publishers ? data.publishers[0] : "";
+                    listDiv.innerHTML = '';
+                    if (data.length === 0) {
+                        listDiv.innerHTML = '<p style="text-align:center;">找不到相關書籍。</p>';
+                        return;
+                    }
                     
-                    // 封面
-                    const cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
-
-                    fillData({title, author: "請手動輸入", publisher, year, month, cover_url: cover, description: "(來源:OpenLibrary)"});
-                    msgBox.textContent = '瀏覽器查詢成功 (來源:OpenLibrary)'; msgBox.style.color = 'green';
+                    data.forEach(book => {
+                        const item = document.createElement('div');
+                        item.className = 'search-result-item';
+                        item.onclick = function() { selectBook(book); };
+                        
+                        const img = book.cover_url ? `<img src="${book.cover_url}">` : '<div style="width:60px;height:80px;background:#eee;display:flex;align-items:center;justify-content:center;">無圖</div>';
+                        
+                        item.innerHTML = `
+                            ${img}
+                            <div class="search-result-info">
+                                <h4>${book.title}</h4>
+                                <p>作者: ${book.author}</p>
+                                <p>年份: ${book.year || '-'} | 出版社: ${book.publisher || '-'}</p>
+                                <p style="font-size:12px;color:#888;">ISBN: ${book.isbn || '無'}</p>
+                            </div>
+                        `;
+                        listDiv.appendChild(item);
+                    });
                 })
                 .catch(err => {
-                    console.error("All failed:", err);
-                    msgBox.textContent = '所有來源皆查無資料，請手動輸入。';
-                    msgBox.style.color = 'red';
+                    console.error(err);
+                    listDiv.innerHTML = '<p style="text-align:center;color:red;">搜尋發生錯誤。</p>';
                 });
+        }
+
+        function closeTitleModal() {
+            document.getElementById('titleSearchModal').style.display = 'none';
+        }
+
+        // 點擊 Modal 外部關閉
+        window.onclick = function(event) {
+            const modal = document.getElementById('titleSearchModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        function selectBook(book) {
+            fillData(book);
+            closeTitleModal();
+            // 如果選到的書有 ISBN，填入並聚焦
+            if (book.isbn) {
+                document.getElementById('isbn').value = book.isbn;
+            }
         }
 
         function fillData(data) {
@@ -269,8 +272,10 @@
             document.getElementById('publisher').value = data.publisher || ''; 
             document.getElementById('year').value = data.year || '';
             document.getElementById('description_input').value = data.description || '';
+            
             const monthSelect = document.getElementById('month');
             if (data.month) monthSelect.value = parseInt(data.month);
+            
             document.getElementById('cover_url').value = data.cover_url || '';
             if (data.cover_url) {
                 const img = document.getElementById('book-cover-img');
