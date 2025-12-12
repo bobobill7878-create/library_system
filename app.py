@@ -11,8 +11,10 @@ import io
 import re
 from bs4 import BeautifulSoup
 import cloudscraper
+import pandas as pd
 import urllib3
 
+# 忽略 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
@@ -68,13 +70,13 @@ class Book(db.Model):
     def __repr__(self): return f'<Book {self.title}>'
 
 # ==========================================
-# 🔥 爬蟲工具區 🔥
+# 🔥 強力爬蟲工具區 (CloudScraper) 🔥
 # ==========================================
 scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
 
+# 1. 三民書局
 def scrape_sanmin(isbn):
-    # (省略三民爬蟲程式碼以節省篇幅，請保留您原本 V6.0 的內容，或使用完整版)
-    # 這裡為了完整性，我還是貼上精簡版
+    print(f">>> [三民] 開始查詢: {isbn}")
     url = f"https://www.sanmin.com.tw/search/index?ct=all&k={isbn}"
     try:
         res = scraper.get(url, timeout=15)
@@ -95,17 +97,66 @@ def scrape_sanmin(isbn):
         return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": "(來源:三民書局)"}
     except: return None
 
+# 2. 維基百科
 def scrape_wikipedia(isbn):
-    # (保留 V6.0 的維基爬蟲)
-    return None # 暫時略過實作以縮短長度，請使用 V6.0 的版本
+    print(f">>> [維基] 開始查詢: {isbn}")
+    url = "https://zh.wikipedia.org/w/api.php"
+    params = {"action": "query", "list": "search", "srsearch": f"{isbn}", "format": "json", "utf8": 1}
+    try:
+        res = requests.get(url, params=params, timeout=5)
+        data = res.json()
+        if data.get('query', {}).get('search'):
+            first = data['query']['search'][0]
+            snippet = re.sub('<[^<]+?>', '', first.get('snippet', ''))
+            return {"success": True, "title": first['title'], "author": "請手動輸入", "publisher": "", "year": None, "month": None, "cover_url": "", "description": snippet}
+        return None
+    except: return None
 
+# 3. 金石堂
 def scrape_kingstone(isbn):
-    # (保留 V6.0 的金石堂爬蟲)
-    return None
+    print(f">>> [金石堂] 開始查詢: {isbn}")
+    url = f"https://www.kingstone.com.tw/search/key/{isbn}"
+    try:
+        res = scraper.get(url, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        title_tag = soup.select_one('h3.pdname_box a') or soup.select_one('h1.pdname_box')
+        if not title_tag: return None
+        title = title_tag.get('title') or title_tag.text.strip()
+        author = (soup.select_one('span.author a') or soup.select_one('.basic_box .author a') or {}).text or "未知"
+        publisher = (soup.select_one('span.publisher a') or soup.select_one('.basic_box .publisher a') or {}).text or ""
+        year, month = None, None
+        date_tag = soup.select_one('span.pubdate') or soup.select_one('.basic_box .pubdate')
+        if date_tag:
+            match = re.search(r'(\d{4})[\/-](\d{1,2})', date_tag.text)
+            if match: year, month = match.group(1), match.group(2)
+        img = soup.select_one('img.lazyload') or soup.select_one('.cover_box img')
+        cover = img.get('data-src') or img.get('src') or ""
+        return {"success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": cover, "description": ""}
+    except: return None
 
+# 4. 博客來
 def scrape_books_com_tw(isbn):
-    # (保留 V6.0 的博客來爬蟲)
-    return None
+    print(f">>> [博客來] 開始查詢: {isbn}")
+    url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
+    try:
+        res = scraper.get(url, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        item = soup.select_one('.table-search-tbody .table-td') or soup.select_one('li.item')
+        if not item: return None
+        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
+        if not title_tag: return None
+        title = title_tag.get('title') or title_tag.text.strip()
+        author = (item.select_one('a[rel="go_author"]') or {}).text or "未知"
+        publisher = (item.select_one('a[rel="go_publisher"]') or {}).text or ""
+        text = item.get_text()
+        year, month = None, None
+        match = re.search(r'(\d{4})[\/-](\d{1,2})', text)
+        if match: year, month = match.group(1), match.group(2)
+        img = item.select_one('img')
+        cover = img.get('data-src') or img.get('src') or ""
+        if cover and not cover.startswith("http"): cover = "https:" + cover
+        return {"success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": cover, "description": ""}
+    except: return None
 
 # ==========================================
 
@@ -142,7 +193,7 @@ def index():
         all_books = books_query.order_by(Book.series.desc(), Book.volume.asc(), Book.id.desc()).all()
         all_categories = Category.query.all()
         return render_template('index.html', books=all_books, categories=all_categories, current_query=query, current_category_id=category_id, current_search_field=search_field, current_status=status_filter)
-    except Exception as e: return f"Error: {e} <a href='/init_db'>Init DB</a>"
+    except Exception as e: return f"資料庫未連線: {e} <a href='/init_db'>初始化</a>"
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_book():
@@ -314,6 +365,95 @@ def export_csv():
     output.seek(0)
     return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=library_backup.csv"})
 
+@app.route('/import', methods=['GET', 'POST'])
+def import_books():
+    if request.method == 'POST':
+        if 'file' not in request.files: return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '': return redirect(request.url)
+        if file:
+            try:
+                if file.filename.endswith('.csv'):
+                    try: df = pd.read_csv(file, encoding='utf-8-sig')
+                    except: file.seek(0); df = pd.read_csv(file, encoding='big5')
+                elif file.filename.endswith(('.xls', '.xlsx')):
+                    df = pd.read_excel(file)
+                else: return render_template('import_books.html', error="不支援的檔案格式")
+
+                success_count = 0
+                df.columns = [c.strip() for c in df.columns]
+                for index, row in df.iterrows():
+                    title = str(row.get('書名', '')).strip()
+                    if not title or title == 'nan': continue
+                    
+                    cat_name = str(row.get('分類', '')).strip()
+                    category_id = None
+                    if cat_name and cat_name != 'nan':
+                        cat = Category.query.filter_by(name=cat_name).first()
+                        if not cat:
+                            cat = Category(name=cat_name)
+                            db.session.add(cat); db.session.flush()
+                        category_id = cat.id
+
+                    def get_int(val): 
+                        try: return int(float(val))
+                        except: return None
+                    def get_str(val):
+                        s = str(val).strip()
+                        return s if s != 'nan' else ''
+
+                    new_book = Book(
+                        title=title, author=str(row.get('作者', '')).strip(),
+                        publisher=get_str(row.get('出版社')), isbn=get_str(row.get('ISBN')),
+                        series=get_str(row.get('叢書') or row.get('叢書名')),
+                        volume=get_str(row.get('集數')), location=get_str(row.get('位置')),
+                        status=get_str(row.get('狀態')) or '未讀',
+                        print_version=get_str(row.get('版本')),
+                        year=get_int(row.get('出版年')), month=get_int(row.get('出版月')),
+                        rating=get_int(row.get('評分')) or 0, tags=get_str(row.get('標籤')),
+                        description=get_str(row.get('大綱')), notes=get_str(row.get('備註')),
+                        category_id=category_id
+                    )
+                    db.session.add(new_book)
+                    success_count += 1
+                db.session.commit()
+                return render_template('import_books.html', success_message=f"成功匯入 {success_count} 本！")
+            except Exception as e: return render_template('import_books.html', error=f"失敗：{str(e)}")
+    return render_template('import_books.html')
+
+@app.route('/api/search_keyword/<keyword>', methods=['GET'])
+def search_keyword(keyword):
+    if not keyword: return jsonify([]), 400
+    results = []
+    try:
+        api_url = f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=15&printType=books"
+        response = requests.get(api_url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if 'items' in data:
+                for item in data['items']:
+                    v = item.get('volumeInfo', {})
+                    isbn = ""
+                    for ident in v.get('industryIdentifiers', []):
+                        if ident['type'] == 'ISBN_13': isbn = ident['identifier']; break
+                    if not isbn and v.get('industryIdentifiers'): isbn = v['industryIdentifiers'][0]['identifier']
+                    
+                    pd = v.get('publishedDate', '')
+                    year = pd.split('-')[0] if pd else ""
+                    img = v.get('imageLinks', {})
+                    cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
+                    if cover and cover.startswith("http://"): cover = cover.replace("http://", "https://")
+
+                    results.append({
+                        "title": v.get('title', '無標題'),
+                        "author": ", ".join(v.get('authors', ['未知'])),
+                        "publisher": v.get('publisher', ''),
+                        "year": year, "isbn": isbn, "cover_url": cover,
+                        "description": v.get('description', '')
+                    })
+    except: pass
+    return jsonify(results)
+
 @app.route('/api/lookup_isbn/<isbn>', methods=['GET'])
 def lookup_isbn(isbn):
     if not isbn: return jsonify({"error": "ISBN 碼不可為空"}), 400
@@ -330,8 +470,7 @@ def lookup_isbn(isbn):
             if response.status_code == 200:
                 data = response.json()
                 if data.get('totalItems', 0) > 0 and 'items' in data:
-                    item = data['items'][0]
-                    v = item['volumeInfo']
+                    v = data['items'][0]['volumeInfo']
                     pd = v.get('publishedDate', '')
                     y = pd.split('-')[0] if pd else None
                     m = pd.split('-')[1] if len(pd.split('-')) > 1 else None
@@ -339,68 +478,37 @@ def lookup_isbn(isbn):
                     cover = img.get('large') or img.get('medium') or img.get('thumbnail')
                     if cover and cover.startswith("http://"): cover = cover.replace("http://", "https://")
                     result_data = {"success": True, "title": v.get('title',''), "author": ", ".join(v.get('authors',['N/A'])), "publisher": v.get('publisher',''), "year": y, "month": m, "cover_url": cover, "description": v.get('description','')}
+                    print(">>> [Google] 命中")
     except: pass
 
     # 2. 三民書局 (優先備援)
     if not result_data or not result_data.get('title'):
         sanmin_data = scrape_sanmin(clean_isbn)
-        if sanmin_data: result_data = sanmin_data
+        if sanmin_data:
+            result_data = sanmin_data
+            print(">>> [三民] 命中")
 
-    # (其他備援略，請依需求保留金石堂等)
+    # 3. 博客來
+    if not result_data or not result_data.get('title'):
+        books_tw = scrape_books_com_tw(clean_isbn)
+        if books_tw:
+            result_data = books_tw
+            print(">>> [博客來] 命中")
+
+    # 4. 金石堂
+    if not result_data or not result_data.get('title'):
+        ks_data = scrape_kingstone(clean_isbn)
+        if ks_data:
+            result_data = ks_data
+            print(">>> [金石堂] 命中")
+
+    # 5. 維基百科
+    if not result_data or not result_data.get('title'):
+        wiki = scrape_wikipedia(clean_isbn)
+        if wiki: result_data = wiki
 
     if result_data: return jsonify(result_data)
     else: return jsonify({"error": "找不到此 ISBN"}), 404
-
-# ====== 🔥 新增：關鍵字搜尋路由 (書名搜尋) 🔥 ======
-@app.route('/api/search_keyword/<keyword>', methods=['GET'])
-def search_keyword(keyword):
-    if not keyword: return jsonify([]), 400
-    
-    results = []
-    # 使用 Google Books API 進行關鍵字搜尋
-    try:
-        # q=intitle:關鍵字，限制只搜尋書名，並取前 15 筆
-        api_url = f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=15&printType=books"
-        response = requests.get(api_url, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'items' in data:
-                for item in data['items']:
-                    v = item.get('volumeInfo', {})
-                    
-                    # 抓取 ISBN-13
-                    isbn = ""
-                    identifiers = v.get('industryIdentifiers', [])
-                    for ident in identifiers:
-                        if ident['type'] == 'ISBN_13':
-                            isbn = ident['identifier']
-                            break
-                    if not isbn and identifiers: isbn = identifiers[0]['identifier'] # 如果沒有13碼，抓第一個
-                    
-                    # 日期處理
-                    pd = v.get('publishedDate', '')
-                    year = pd.split('-')[0] if pd else ""
-                    
-                    # 封面
-                    img = v.get('imageLinks', {})
-                    cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
-                    if cover and cover.startswith("http://"): cover = cover.replace("http://", "https://")
-
-                    book_data = {
-                        "title": v.get('title', '無標題'),
-                        "author": ", ".join(v.get('authors', ['未知'])),
-                        "publisher": v.get('publisher', ''),
-                        "year": year,
-                        "isbn": isbn,
-                        "cover_url": cover,
-                        "description": v.get('description', '')
-                    }
-                    results.append(book_data)
-    except Exception as e:
-        print(f"Keyword search error: {e}")
-        
-    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(debug=True)
