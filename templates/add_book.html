@@ -25,12 +25,8 @@
         .btn-search { background-color: #007bff; } .btn-search:hover { background-color: #0056b3; }
         .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; }
         .btn-close { background-color: #dc3545; margin-top: 10px; }
-        
-        /* 鏡頭區域預設隱藏 */
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
         #reader { width: 100%; max-width: 500px; margin: 0 auto; }
-
-        /* Modal CSS */
         .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
         .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; position: relative; }
         .close-modal { position: absolute; right: 15px; top: 10px; font-size: 24px; cursor: pointer; color: #aaa; }
@@ -150,85 +146,34 @@
         document.addEventListener('DOMContentLoaded', (event) => { document.getElementById('isbn').focus(); });
         
         let html5QrCode;
-        
-        // ====== 📷 掃描器修復版 ======
         function startScanner() {
-            // 先顯示區域，確保 HTML 元素存在
             const readerContainer = document.getElementById('reader-container');
             readerContainer.style.display = 'block';
-            
-            // 如果已有實例，先清除
-            if (html5QrCode) {
-                html5QrCode.clear().catch(e => console.error("Clear error:", e));
-            }
-            
+            if (html5QrCode) html5QrCode.clear().catch(e => console.error(e));
             html5QrCode = new Html5Qrcode("reader");
-            
-            // 使用最安全的設定 (不強制解析度，讓手機自己決定)
-            // 但保留對條碼的優化 (扁長形 + 條碼格式)
-            const config = { 
-                fps: 10,
-                qrbox: { width: 250, height: 150 }, 
-                aspectRatio: 1.0,
-                formatsToSupport: [ 
-                    Html5QrcodeSupportedFormats.EAN_13, 
-                    Html5QrcodeSupportedFormats.CODE_128 
-                ]
-            };
-
-            // 使用 facingMode: "environment" (後置鏡頭)
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                config, 
-                (decodedText) => {
-                    document.getElementById('isbn').value = decodedText;
-                    stopScanner();
-                    lookupBookData();
-                }, 
-                (errorMessage) => {
-                    // 掃描中錯誤，忽略
-                }
-            ).catch(err => {
-                // 如果啟動失敗，顯示具體原因
-                console.error("Camera start failed:", err);
-                let msg = "無法啟動鏡頭。";
-                
-                if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                    msg += "\n原因：您的網址不是 HTTPS (安全連線)。瀏覽器強制要求 HTTPS 才能開鏡頭。";
-                } else {
-                    msg += "\n可能原因：\n1. 您拒絕了相機權限 (請重設網站權限)。\n2. 手機不支援此掃描模式。";
-                }
-                
-                alert(msg);
+            const config = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0, formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_128 ] };
+            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+                document.getElementById('isbn').value = decodedText;
+                stopScanner();
+                lookupBookData();
+            }, () => {}).catch(err => {
+                alert("無法啟動鏡頭。請確認是 HTTPS 或已授權相機。");
                 readerContainer.style.display = 'none';
             });
         }
-
         function stopScanner() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => { 
-                    html5QrCode.clear();
-                    document.getElementById('reader-container').style.display = 'none'; 
-                }).catch(err => {
-                    console.error(err);
-                    document.getElementById('reader-container').style.display = 'none'; 
-                });
-            } else {
-                document.getElementById('reader-container').style.display = 'none';
-            }
+            if (html5QrCode) html5QrCode.stop().then(() => { document.getElementById('reader-container').style.display = 'none'; }).catch(console.error);
+            else document.getElementById('reader-container').style.display = 'none';
         }
-        
-        // --- 其他功能保持不變 ---
         function handleKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); lookupBookData(); } }
 
         function lookupBookData() {
             const isbnInput = document.getElementById('isbn');
             const isbn = isbnInput.value.trim().replace(/-/g, '');
             const msgBox = document.getElementById('isbn-message');
-            msgBox.textContent = '正在查詢...'; msgBox.style.color = 'blue';
+            msgBox.textContent = '正在查詢 (伺服器)...'; msgBox.style.color = 'blue';
             document.getElementById('cover-preview').style.display = 'none';
             document.getElementById('book-cover-img').src = "";
-            
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
             fetch(`/api/lookup_isbn/${isbn}`)
@@ -273,6 +218,35 @@
                 fillData({title, author, publisher, year, month, cover_url: img, description: "(來源:三民)"});
                 msgBox.textContent = '瀏覽器查詢成功！'; msgBox.style.color = 'green';
             }).catch(err => {
+                msgBox.textContent = '三民無資料，嘗試抓取讀冊...';
+                clientSideScrapeTaaZe(isbn);
+            });
+        }
+
+        function clientSideScrapeTaaZe(isbn) {
+            const msgBox = document.getElementById('isbn-message');
+            const targetUrl = `https://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D=${isbn}`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&t=${new Date().getTime()}`;
+
+            fetch(proxyUrl).then(r => r.json()).then(data => {
+                const doc = new DOMParser().parseFromString(data.contents, "text/html");
+                const item = doc.querySelector('.search_result_item');
+                if (!item) throw new Error("No Data");
+                
+                const title = (item.querySelector('.book_title_link') || {}).textContent || "";
+                const author = (item.querySelector('.book_author') || {}).textContent || "";
+                const publisher = (item.querySelector('.book_publisher') || {}).textContent || "";
+                let year = "", month = "";
+                const dateEl = item.querySelector('.book_publish_date');
+                if (dateEl) {
+                    const m = dateEl.textContent.match(/(\d{4})-(\d{1,2})/);
+                    if (m) { year = m[1]; month = m[2]; }
+                }
+                const img = (item.querySelector('.book_img img') || {}).src || "";
+                
+                fillData({title, author, publisher, year, month, cover_url: img, description: "(來源:讀冊)"});
+                msgBox.textContent = '瀏覽器查詢成功！'; msgBox.style.color = 'green';
+            }).catch(err => {
                 msgBox.textContent = '查無資料，請嘗試關鍵字搜尋或手動輸入。'; msgBox.style.color = 'red';
             });
         }
@@ -303,7 +277,8 @@
 
         function closeTitleModal() { document.getElementById('titleSearchModal').style.display = 'none'; }
         function selectBook(book) { fillData(book); closeTitleModal(); if (book.isbn) document.getElementById('isbn').value = book.isbn; }
-        
+        window.onclick = function(event) { if (event.target == document.getElementById('titleSearchModal')) closeTitleModal(); }
+
         function fillData(data) {
             document.getElementById('title').value = data.title || '';
             document.getElementById('author').value = data.author || '';
