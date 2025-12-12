@@ -23,14 +23,8 @@
 <body>
     <div class="container">
         <h1>📥 批次匯入書籍</h1>
-        
-        {% if success_message %}
-            <div class="message-box success">{{ success_message }}</div>
-        {% endif %}
-        {% if error %}
-            <div class="message-box error">{{ error }}</div>
-        {% endif %}
-
+        {% if success_message %}<div class="message-box success">{{ success_message }}</div>{% endif %}
+        {% if error %}<div class="message-box error">{{ error }}</div>{% endif %}
         <form method="POST" enctype="multipart/form-data">
             <div class="upload-area">
                 <p>請上傳 Excel (.xlsx) 或 CSV 檔案</p>
@@ -40,7 +34,6 @@
             </div>
             <button type="submit" class="btn-submit">開始匯入</button>
         </form>
-
         <br>
         <div class="template-info">
             <strong>💡 匯入格式說明：</strong><br>
@@ -48,21 +41,16 @@
             系統會自動辨識以下欄位標題：<br>
             <code>書名</code>, <code>作者</code>, <code>出版社</code>, <code>ISBN</code>, <code>分類</code>, <code>叢書</code>, <code>集數</code>, <code>出版年</code>, <code>狀態</code>, <code>評分</code>, <code>位置</code>, <code>標籤</code>
         </div>
-        
         <p style="text-align: center; margin-top: 20px;">
             <a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">« 返回首頁</a>
         </p>
     </div>
-
     <script>
         function showFileName() {
             const input = document.getElementById('file');
             const output = document.getElementById('file-name');
-            if (input.files.length > 0) {
-                output.textContent = "已選擇: " + input.files[0].name;
-            } else {
-                output.textContent = "";
-            }
+            if (input.files.length > 0) output.textContent = "已選擇: " + input.files[0].name;
+            else output.textContent = "";
         }
     </script>
 </body>
