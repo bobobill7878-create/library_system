@@ -10,9 +10,11 @@ import csv
 import io
 import re
 from bs4 import BeautifulSoup
-import cloudscraper # 引入抗擋爬蟲套件
+import cloudscraper # 抗擋爬蟲神器
 
-# 應用程式設定
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 app = Flask(__name__)
 
 # --- 資料庫設定 ---
@@ -66,98 +68,132 @@ class Book(db.Model):
     def __repr__(self): return f'<Book {self.title}>'
 
 # ==========================================
-# 🔥 強力爬蟲工具區 (使用 CloudScraper) 🔥
+# 🔥 強力爬蟲工具區 (CloudScraper) 🔥
 # ==========================================
 
-# 建立一個全域的 scraper 實例，模擬 Chrome 瀏覽器
+# 建立全域 scraper
 scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
 
-# 1. 博客來 (Books.com.tw)
-def scrape_books_com_tw(isbn):
-    print(f">>> [博客來] 開始查詢: {isbn}")
-    url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
+# 1. 三民書局 (Sanmin) - 🔥 救援主力 🔥
+def scrape_sanmin(isbn):
+    print(f">>> [三民] 開始查詢: {isbn}")
+    url = f"https://www.sanmin.com.tw/search/index?ct=all&k={isbn}"
     try:
-        # 使用 scraper 而不是 requests
-        res = scraper.get(url, timeout=10)
-        if res.status_code != 200: 
-            print(f">>> [博客來] 狀態碼: {res.status_code}")
-            return None
-            
+        res = scraper.get(url, timeout=15) # 三民有時較慢
+        if res.status_code != 200: return None
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 嘗試多種 selector
-        item = soup.select_one('.table-search-tbody .table-td')
-        if not item: item = soup.select_one('li.item')
-        
+        # 三民列表結構
+        item = soup.select_one('.SearchItem')
         if not item: 
-            print(">>> [博客來] 未找到項目")
+            print(">>> [三民] 無搜尋結果")
             return None
 
         # 書名
-        title = ""
-        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
-        if title_tag: title = title_tag.get('title') or title_tag.text.strip()
-        else: return None
+        title_tag = item.select_one('.ProdName')
+        if not title_tag: return None
+        title = title_tag.text.strip()
         
         # 作者
         author = "未知作者"
-        author_tag = item.select_one('a[rel="go_author"]')
-        if author_tag: author = author_tag.get('title') or author_tag.text.strip()
+        author_tag = item.select_one('.Author')
+        if author_tag: author = author_tag.text.strip()
 
         # 出版社
         publisher = ""
-        pub_tag = item.select_one('a[rel="go_publisher"]')
-        if pub_tag: publisher = pub_tag.get('title') or pub_tag.text.strip()
+        pub_tag = item.select_one('.Publisher')
+        if pub_tag: publisher = pub_tag.text.strip()
 
-        # 日期
-        text = item.get_text()
+        # 日期 (格式 2024/05/28)
         year, month = None, None
-        match = re.search(r'(\d{4})[\/-](\d{1,2})', text)
-        if match: year, month = match.group(1), match.group(2)
+        date_tag = item.select_one('.PubDate')
+        if date_tag:
+            match = re.search(r'(\d{4})[\/-](\d{1,2})', date_tag.text)
+            if match: year, month = match.group(1), match.group(2)
 
         # 封面
         cover = ""
         img = item.select_one('img')
-        if img: 
-            cover = img.get('data-src') or img.get('src') or ""
-            if not cover.startswith("http"): cover = "https:" + cover
+        if img: cover = img.get('src') or ""
         
-        return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": ""}
+        # 詳情頁抓大綱 (略過以加速，三民列表頁資訊已足夠)
+        
+        return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": "(來源:三民書局)"}
     except Exception as e:
-        print(f">>> [博客來] 錯誤: {e}")
+        print(f">>> [三民] 錯誤: {e}")
         return None
 
-# 2. 金石堂 (Kingstone)
+# 2. 維基百科 (Wikipedia) - 🆕 新增！
+def scrape_wikipedia(isbn):
+    print(f">>> [維基] 開始查詢: {isbn}")
+    # 使用維基百科 API 搜尋 ISBN
+    url = "https://zh.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": f"{isbn}", # 直接搜尋 ISBN
+        "format": "json",
+        "utf8": 1
+    }
+    try:
+        res = requests.get(url, params=params, timeout=5)
+        data = res.json()
+        
+        # 檢查是否有結果
+        if data.get('query', {}).get('search'):
+            first_result = data['query']['search'][0]
+            title = first_result['title']
+            pageid = first_result['pageid']
+            
+            # 這裡我們只能抓到「條目標題」，例如「重回青春時代...」
+            # 很難精確抓到作者或出版社，但至少有書名
+            
+            # 嘗試抓取頁面摘要
+            snippet = first_result.get('snippet', '')
+            # 移除 HTML標籤
+            clean_snippet = re.sub('<[^<]+?>', '', snippet)
+            
+            return {
+                "success": True,
+                "title": title,
+                "author": "請手動輸入", # 維基很難結構化抓取作者
+                "publisher": "",
+                "year": None,
+                "month": None,
+                "cover_url": "", # 維基圖片抓取太複雜
+                "description": f"維基百科條目：{title}\n\n{clean_snippet}..."
+            }
+        print(">>> [維基] 無條目")
+        return None
+    except Exception as e:
+        print(f">>> [維基] 錯誤: {e}")
+        return None
+
+# 3. 金石堂 (Kingstone)
 def scrape_kingstone(isbn):
     print(f">>> [金石堂] 開始查詢: {isbn}")
     url = f"https://www.kingstone.com.tw/search/key/{isbn}"
     try:
         res = scraper.get(url, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # 標題 (列表頁 or 詳情頁)
         title_tag = soup.select_one('h3.pdname_box a') or soup.select_one('h1.pdname_box')
         if not title_tag: return None
         title = title_tag.get('title') or title_tag.text.strip()
         
-        # 作者
         author = "未知作者"
         author_tag = soup.select_one('span.author a') or soup.select_one('.basic_box .author a')
         if author_tag: author = author_tag.text.strip()
 
-        # 出版社
         publisher = ""
         pub_tag = soup.select_one('span.publisher a') or soup.select_one('.basic_box .publisher a')
         if pub_tag: publisher = pub_tag.text.strip()
 
-        # 日期
         year, month = None, None
         date_tag = soup.select_one('span.pubdate') or soup.select_one('.basic_box .pubdate')
         if date_tag:
             match = re.search(r'(\d{4})[\/-](\d{1,2})', date_tag.text)
             if match: year, month = match.group(1), match.group(2)
 
-        # 封面
         cover = ""
         img = soup.select_one('img.lazyload') or soup.select_one('.cover_box img')
         if img: cover = img.get('data-src') or img.get('src') or ""
@@ -167,42 +203,41 @@ def scrape_kingstone(isbn):
         print(f">>> [金石堂] 錯誤: {e}")
         return None
 
-# 3. 讀冊 (TaaZe)
-def scrape_taaze(isbn):
-    print(f">>> [讀冊] 開始查詢: {isbn}")
-    url = f"https://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D={isbn}"
+# 4. 博客來 (Books.com.tw)
+def scrape_books_com_tw(isbn):
+    print(f">>> [博客來] 開始查詢: {isbn}")
+    url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
     try:
         res = scraper.get(url, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
-        
-        item = soup.select_one('.search_result_item')
+        item = soup.select_one('.table-search-tbody .table-td') or soup.select_one('li.item')
         if not item: return None
+
+        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
+        if not title_tag: return None
+        title = title_tag.get('title') or title_tag.text.strip()
         
-        title_link = item.select_one('.book_title_link')
-        if not title_link: return None
-        title = title_link.text.strip()
-        
-        author = "未知"
-        div = item.select_one('.book_author')
-        if div: author = div.text.strip()
+        author = "未知作者"
+        author_tag = item.select_one('a[rel="go_author"]')
+        if author_tag: author = author_tag.get('title') or author_tag.text.strip()
 
         publisher = ""
-        div = item.select_one('.book_publisher')
-        if div: publisher = div.text.strip()
+        pub_tag = item.select_one('a[rel="go_publisher"]')
+        if pub_tag: publisher = pub_tag.get('title') or pub_tag.text.strip()
 
+        text = item.get_text()
         year, month = None, None
-        div = item.select_one('.book_publish_date')
-        if div:
-            match = re.search(r'(\d{4})[\/-](\d{1,2})', div.text)
-            if match: year, month = match.group(1), match.group(2)
+        match = re.search(r'(\d{4})[\/-](\d{1,2})', text)
+        if match: year, month = match.group(1), match.group(2)
 
         cover = ""
-        img = item.select_one('.book_img img')
-        if img: cover = img.get('src') or ""
+        img = item.select_one('img')
+        if img: cover = img.get('data-src') or img.get('src') or ""
+        if cover and not cover.startswith("http"): cover = "https:" + cover
         
         return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": ""}
     except Exception as e:
-        print(f">>> [讀冊] 錯誤: {e}")
+        print(f">>> [博客來] 錯誤: {e}")
         return None
 
 # ==========================================
@@ -421,47 +456,60 @@ def export_csv():
 def lookup_isbn(isbn):
     if not isbn: return jsonify({"error": "ISBN 碼不可為空"}), 400
     
-    # 清理 ISBN (移除 - )
-    clean_isbn = isbn.replace('-', '')
+    clean_isbn = isbn.replace('-', '').strip()
     result_data = None
     
     # 1. Google Books (API)
     try:
-        api_url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{clean_isbn}&country=TW"
-        response = requests.get(api_url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('totalItems', 0) > 0:
-                v = data['items'][0]['volumeInfo']
-                pd = v.get('publishedDate', '')
-                y = pd.split('-')[0] if pd else None
-                m = pd.split('-')[1] if len(pd.split('-')) > 1 else None
-                img = v.get('imageLinks', {})
-                cover = img.get('large') or img.get('medium') or img.get('thumbnail')
-                result_data = {"success": True, "title": v.get('title',''), "author": ", ".join(v.get('authors',['N/A'])), "publisher": v.get('publisher',''), "year": y, "month": m, "cover_url": cover, "description": v.get('description','')}
-                print(">>> [Google] 命中")
+        # 修正：放寬搜尋條件，先搜精確 ISBN，失敗則搜關鍵字
+        queries = [f"isbn:{clean_isbn}", clean_isbn]
+        for q in queries:
+            if result_data: break
+            api_url = f"https://www.googleapis.com/books/v1/volumes?q={q}"
+            response = requests.get(api_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('totalItems', 0) > 0 and 'items' in data:
+                    item = data['items'][0]
+                    v = item['volumeInfo']
+                    pd = v.get('publishedDate', '')
+                    y = pd.split('-')[0] if pd else None
+                    m = pd.split('-')[1] if len(pd.split('-')) > 1 else None
+                    img = v.get('imageLinks', {})
+                    cover = img.get('large') or img.get('medium') or img.get('thumbnail')
+                    if cover and cover.startswith("http://"): cover = cover.replace("http://", "https://")
+                    
+                    result_data = {"success": True, "title": v.get('title',''), "author": ", ".join(v.get('authors',['N/A'])), "publisher": v.get('publisher',''), "year": y, "month": m, "cover_url": cover, "description": v.get('description','')}
+                    print(">>> [Google] 命中")
     except: pass
 
-    # 2. 金石堂 (Kingstone) - 新書首選
+    # 2. 三民書局 (Sanmin) - 🔥 之前沒加到後端，現在補上！
+    if not result_data or not result_data.get('title'):
+        sanmin_data = scrape_sanmin(clean_isbn)
+        if sanmin_data:
+            result_data = sanmin_data
+            print(">>> [三民] 命中")
+
+    # 3. 金石堂 (Kingstone)
     if not result_data or not result_data.get('title'):
         ks_data = scrape_kingstone(clean_isbn)
         if ks_data:
             result_data = ks_data
             print(">>> [金石堂] 命中")
 
-    # 3. 博客來 (Books.com.tw)
+    # 4. 博客來 (Books.com.tw)
     if not result_data or not result_data.get('title'):
         books_tw = scrape_books_com_tw(clean_isbn)
         if books_tw:
             result_data = books_tw
             print(">>> [博客來] 命中")
 
-    # 4. 讀冊 (TaaZe)
+    # 5. 維基百科 (Wikipedia) - 🆕 新增保底
     if not result_data or not result_data.get('title'):
-        taaze_data = scrape_taaze(clean_isbn)
-        if taaze_data:
-            result_data = taaze_data
-            print(">>> [讀冊] 命中")
+        wiki_data = scrape_wikipedia(clean_isbn)
+        if wiki_data:
+            result_data = wiki_data
+            print(">>> [維基] 命中")
 
     if result_data: return jsonify(result_data)
     else: return jsonify({"error": "找不到此 ISBN"}), 404
