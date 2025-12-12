@@ -6,3 +6,5 @@ gunicorn
 psycopg2-binary
 beautifulsoup4
 cloudscraper
+pandas
+openpyxl
