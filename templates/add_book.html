@@ -176,6 +176,7 @@
             document.getElementById('book-cover-img').src = "";
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
+            // 1. 伺服器查詢 (Google/MOMO/三民)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
@@ -183,6 +184,7 @@
                         fillData(body);
                         msgBox.textContent = '查詢成功！'; msgBox.style.color = 'green';
                     } else {
+                        // 2. 失敗 -> 瀏覽器查三民書局
                         msgBox.textContent = '伺服器無資料，嘗試瀏覽器查詢 (三民)...';
                         clientSideScrapeSanmin(isbn);
                     }
@@ -193,7 +195,7 @@
                 });
         }
 
-        // 前端爬蟲備援
+        // 前端爬蟲備援 (AllOrigins + 三民)
         function clientSideScrapeSanmin(isbn) {
             const msgBox = document.getElementById('isbn-message');
             const targetUrl = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
