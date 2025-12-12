@@ -35,16 +35,12 @@ if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 
 db = SQLAlchemy(app)
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 # --- 模型定義 ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
     books = db.relationship('Book', backref='category', lazy=True)
-    def __repr__(self): return f'<Category {self.name}>'
 
 class Book(db.Model):
     __tablename__ = 'books'
@@ -67,14 +63,13 @@ class Book(db.Model):
     rating = db.Column(db.Integer, default=0)
     tags = db.Column(db.String(200), nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
-    def __repr__(self): return f'<Book {self.title}>'
 
 # ==========================================
 # 🔥 強力爬蟲工具區 (CloudScraper) 🔥
 # ==========================================
 scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
 
-# 1. MOMO 購物網 (🔥 新增救援主力)
+# 1. MOMO 購物網 (救援主力)
 def scrape_momo(isbn):
     print(f">>> [MOMO] 開始查詢: {isbn}")
     url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
@@ -91,42 +86,32 @@ def scrape_momo(isbn):
 
         title = item.select_one('.prdName').text.strip()
         
-        # 進入詳情頁抓更多資料 (MOMO 列表頁資訊太少)
+        # 進入詳情頁抓更多資料
         detail_link = item.select_one('a')['href']
         if detail_link:
             if not detail_link.startswith("http"): 
                 detail_link = "https://m.momoshop.com.tw" + detail_link
             
-            print(f">>> [MOMO] 進入詳情頁: {detail_link}")
             d_res = scraper.get(detail_link, timeout=10)
             d_soup = BeautifulSoup(d_res.text, 'html.parser')
             
-            # 抓作者/出版社/日期
-            # MOMO 詳情頁結構較亂，嘗試抓取表格
             author = "未知作者"
             publisher = ""
             year, month = None, None
             
-            # 嘗試從 meta description 或 規格表 抓取
-            # 這裡做一個簡單的通用解析
             content_area = d_soup.select_one('.Area02') or d_soup.select_one('.attributesTable')
             if content_area:
                 text = content_area.get_text()
-                # 抓出版社
                 pub_match = re.search(r'出版社[：:]\s*(.+)', text)
                 if pub_match: publisher = pub_match.group(1).strip()
-                # 抓作者
                 auth_match = re.search(r'作者[：:]\s*(.+)', text)
                 if auth_match: author = auth_match.group(1).strip()
-                # 抓日期 (2025/05/28)
                 date_match = re.search(r'出版日[：:]\s*(\d{4})[\/-](\d{1,2})', text)
                 if date_match: year, month = date_match.group(1), date_match.group(2)
 
-            # 封面
             img = d_soup.select_one('.swiper-slide img')
             cover = img.get('src') if img else ""
             
-            # 簡介
             desc = ""
             desc_area = d_soup.select_one('.Area03')
             if desc_area: desc = desc_area.get_text(strip=True)[:500]
@@ -475,7 +460,7 @@ def search_keyword(keyword):
     except: pass
     return jsonify(results)
 
-# ====== 🔥 診斷路由 (請訪問 /api/debug_scrape/ISBN) 🔥 ======
+# ====== 🔥 診斷路由 (Check logs) ======
 @app.route('/api/debug_scrape/<isbn>', methods=['GET'])
 def debug_scrape(isbn):
     clean_isbn = isbn.replace('-', '').strip()
