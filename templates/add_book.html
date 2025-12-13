@@ -13,8 +13,11 @@
         .isbn-group input:focus { border-color: #007bff; outline: none; }
         input[type="text"], input[type="number"], select, input[type="file"], textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
         .row { display: flex; gap: 15px; } .row > div { flex: 1; }
-        .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; }
-        .cover-preview img { width: 100%; display: block; }
+        
+        /* 預覽區塊樣式調整 */
+        .cover-preview { margin: 10px auto; display: none; width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; background: #fff; text-align: center; }
+        .cover-preview img { width: 100%; height: auto; display: block; }
+        
         .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; white-space: pre-wrap; }
         .success-message { color: #28a745; font-weight: bold; margin-bottom: 15px; text-align: center; }
         h1 { margin-bottom: 20px; color: #333; }
@@ -26,7 +29,6 @@
         .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; margin-top: 10px; }
         .btn-close { background-color: #dc3545; margin-top: 10px; }
         
-        /* 救援按鈕樣式 */
         .manual-help-btns { display: none; margin-top: 10px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 6px; }
         .manual-help-btns p { margin: 0 0 10px 0; color: #856404; font-size: 14px; }
         .help-btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -71,23 +73,28 @@
         <div id="isbn-message" class="message-box"></div>
         
         <div id="manual-help" class="manual-help-btns">
-            <p>⚠️ 自動抓取失敗 (防火牆擋太兇)。請點擊下方按鈕，在新分頁查看書訊並手動複製：</p>
+            <p>⚠️ 自動抓取失敗。請點擊按鈕，在新分頁「複製圖片位址」並貼到下方欄位：</p>
             <div class="help-btn-group">
-                <a href="#" target="_blank" id="link-momo" class="btn-help momo">MOMO 購物</a>
+                <a href="#" target="_blank" id="link-momo" class="btn-help momo">MOMO</a>
                 <a href="#" target="_blank" id="link-books" class="btn-help books">博客來</a>
-                <a href="#" target="_blank" id="link-sanmin" class="btn-help sanmin">三民書局</a>
-                <a href="#" target="_blank" id="link-google" class="btn-help">Google 搜尋</a>
+                <a href="#" target="_blank" id="link-sanmin" class="btn-help sanmin">三民</a>
+                <a href="#" target="_blank" id="link-google" class="btn-help">Google</a>
             </div>
         </div>
 
-        <div id="cover-preview" class="cover-preview"><img id="book-cover-img" src=""></div>
-        <input type="hidden" id="cover_url" name="cover_url">
-
         <hr>
+
+        <label>封面圖片網址 (貼上連結即可預覽):</label>
+        <input type="text" id="cover_url" name="cover_url" placeholder="例如: https://img.momoshop.com.tw/..." oninput="updateCoverPreview()">
+        
+        <div id="cover-preview" class="cover-preview">
+            <img id="book-cover-img" src="" onerror="this.src='https://via.placeholder.com/150x200?text=No+Image'">
+            <p style="font-size:12px; color:#888; margin-top:5px;">封面預覽</p>
+        </div>
 
         <label>書名 <span style="color:red">*</span>:</label>
         <div class="title-group">
-            <input type="text" id="title" name="title" required placeholder="若自動查詢失敗，請輸入書名後點搜尋">
+            <input type="text" id="title" name="title" required placeholder="輸入書名">
             <button type="button" class="btn btn-search" onclick="searchByTitle()" style="margin-bottom: 15px;">🔍 搜尋</button>
         </div>
 
@@ -152,7 +159,10 @@
         </div>
         <label>大綱:</label><textarea id="description_input" name="description" rows="3"></textarea>
         <label>備註:</label><textarea name="notes" rows="2"></textarea>
-        <label>手動上傳封面:</label><input type="file" id="cover_file" name="cover_file" accept="image/*">
+        
+        <label>手動上傳封面 (若上面網址失效可選此):</label>
+        <input type="file" id="cover_file" name="cover_file" accept="image/*">
+        
         <button type="submit" class="btn btn-submit">儲存圖書</button>
     </form>
     <p><a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">« 返回清單</a></p>
@@ -190,26 +200,39 @@
         }
         function handleKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); lookupBookData(); } }
 
+        // 🔥 新增：監聽網址欄位變化，即時更新預覽
+        function updateCoverPreview() {
+            const url = document.getElementById('cover_url').value.trim();
+            const img = document.getElementById('book-cover-img');
+            const previewBox = document.getElementById('cover-preview');
+            
+            if (url) {
+                img.src = url;
+                previewBox.style.display = 'block';
+            } else {
+                previewBox.style.display = 'none';
+            }
+        }
+
         function lookupBookData() {
             const isbnInput = document.getElementById('isbn');
             const isbn = isbnInput.value.trim().replace(/-/g, '');
             const msgBox = document.getElementById('isbn-message');
             const helpBox = document.getElementById('manual-help');
             
-            helpBox.style.display = 'none'; // 先隱藏救援按鈕
+            helpBox.style.display = 'none'; 
             msgBox.textContent = '正在查詢 (伺服器)...'; msgBox.style.color = 'blue';
+            // 清空預覽
+            document.getElementById('cover_url').value = '';
             document.getElementById('cover-preview').style.display = 'none';
-            document.getElementById('book-cover-img').src = "";
             
             if (!isbn) { msgBox.textContent = '請輸入 ISBN'; isbnInput.focus(); return; }
 
-            // 設定救援按鈕連結
             document.getElementById('link-momo').href = `https://m.momoshop.com.tw/search.momo?searchKeyword=${isbn}`;
             document.getElementById('link-books').href = `https://search.books.com.tw/search/query/key/${isbn}/cat/all`;
             document.getElementById('link-sanmin').href = `https://www.sanmin.com.tw/search/index?ct=all&k=${isbn}`;
             document.getElementById('link-google').href = `https://www.google.com/search?q=${isbn}`;
 
-            // 1. 後端查詢 (MOMO/三民)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(({ status, body }) => {
@@ -227,17 +250,14 @@
                 });
         }
 
-        // 2. 前端直連 Google Books API
         function directGoogleSearch(isbn) {
             const msgBox = document.getElementById('isbn-message');
-            // 嘗試放寬搜尋：先搜 isbn:，如果失敗再搜純數字
             fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.totalItems > 0 && data.items) {
                         processGoogleData(data.items[0], msgBox);
                     } else {
-                        // 如果 isbn: 沒結果，嘗試直接搜數字 (有時候會中)
                         return fetch(`https://www.googleapis.com/books/v1/volumes?q=${isbn}`);
                     }
                 })
@@ -276,7 +296,6 @@
             msgBox.textContent = 'Google 直連查詢成功！'; msgBox.style.color = 'green';
         }
 
-        // 3. 前端直連 OpenLibrary
         function directOpenLibrary(isbn) {
             const msgBox = document.getElementById('isbn-message');
             const helpBox = document.getElementById('manual-help');
@@ -298,10 +317,9 @@
                     msgBox.textContent = 'OpenLibrary 查詢成功！'; msgBox.style.color = 'green';
                 })
                 .catch(err => {
-                    // 🔥 所有方法都失敗了：顯示救援按鈕
                     msgBox.textContent = '查無資料。請使用下方按鈕手動查詢：'; 
                     msgBox.style.color = 'red';
-                    helpBox.style.display = 'block'; // 顯示按鈕
+                    helpBox.style.display = 'block'; 
                 });
         }
 
@@ -361,11 +379,8 @@
             const monthSelect = document.getElementById('month');
             if (data.month) monthSelect.value = parseInt(data.month);
             document.getElementById('cover_url').value = data.cover_url || '';
-            if (data.cover_url) {
-                const img = document.getElementById('book-cover-img');
-                img.src = data.cover_url;
-                document.getElementById('cover-preview').style.display = 'block';
-            }
+            // 手動觸發預覽
+            updateCoverPreview();
         }
     </script>
 </body>
