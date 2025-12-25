@@ -8,7 +8,7 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f9f9f9; }
         .container { max-width: 1200px; margin: 0 auto; }
         
-        /* 搜尋與按鈕樣式 */
+        /* 搜尋與按鈕 */
         .search-box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .search-row { display: flex; gap: 10px; margin-bottom: 15px; }
         .search-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
@@ -22,12 +22,12 @@
         .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
         .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #333; cursor: pointer; }
 
-        /* 書籍列表樣式 */
+        /* 書籍列表 */
         .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
         .book-card { 
             background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; 
             display: flex; gap: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); 
-            transition: transform 0.2s; cursor: pointer; /* 加上手指游標 */
+            transition: transform 0.2s; cursor: pointer;
         }
         .book-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
         .book-cover { width: 80px; height: 110px; flex-shrink: 0; background-color: #eee; border-radius: 4px; overflow: hidden; }
@@ -40,27 +40,30 @@
         .status-閱讀中 { background-color: #17a2b8; }
         .status-已讀完 { background-color: #28a745; }
         .status-棄坑 { background-color: #6c757d; }
-        .action-links { margin-top: 10px; font-size: 13px; position: relative; z-index: 2; /* 確保按鈕在點擊事件之上 */ }
+        
+        .action-links { margin-top: 10px; font-size: 13px; position: relative; z-index: 2; }
         .action-links a { margin-right: 10px; text-decoration: none; color: #007bff; }
         .action-links a.delete-btn { color: #dc3545; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .add-btn { background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; }
-
-        /* --- 彈跳視窗 (Modal) CSS --- */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
-        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 10px; position: relative; display: flex; flex-direction: column; gap: 20px; }
-        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; position: absolute; right: 20px; top: 10px; cursor: pointer; }
-        .close-btn:hover { color: black; }
         
-        .modal-body { display: flex; gap: 20px; }
+        .btn-tool { padding: 10px 15px; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 14px; display: flex; align-items: center; }
+        .btn-tool:hover { opacity: 0.9; }
+
+        /* Modal 彈跳視窗 */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 700px; border-radius: 10px; position: relative; }
+        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close-btn:hover { color: black; }
+        .modal-body { display: flex; gap: 20px; margin-top: 10px; }
         .modal-cover { width: 150px; flex-shrink: 0; }
         .modal-cover img { width: 100%; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
         .modal-details { flex-grow: 1; }
         .modal-details h2 { margin-top: 0; color: #333; }
         .modal-details p { margin: 8px 0; line-height: 1.6; color: #555; }
         .modal-label { font-weight: bold; color: #333; display: inline-block; width: 70px; }
-        
+
         @media (max-width: 600px) {
             .modal-body { flex-direction: column; align-items: center; }
             .modal-details { width: 100%; }
@@ -71,7 +74,16 @@
     <div class="container">
         <div class="header">
             <h1>📚 我的圖書館</h1>
-            <a href="{{ url_for('add_book') }}" class="add-btn">➕ 新增書籍</a>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <a href="{{ url_for('export_excel') }}" class="btn-tool" style="background-color: #17a2b8;">📤 匯出</a>
+                
+                <form action="{{ url_for('import_excel') }}" method="POST" enctype="multipart/form-data" style="display: inline;">
+                    <input type="file" name="file" id="importFile" style="display: none;" accept=".xlsx, .xls" onchange="this.form.submit()">
+                    <button type="button" class="btn-tool" style="background-color: #ffc107; color: black;" onclick="document.getElementById('importFile').click()">📥 匯入</button>
+                </form>
+
+                <a href="{{ url_for('add_book') }}" class="add-btn">➕ 新增書籍</a>
+            </div>
         </div>
 
         <form method="GET" action="/" class="search-box">
@@ -83,24 +95,22 @@
 
             <div class="filter-section">
                 <div class="filter-group">
-                    <div class="filter-title">📂 分類 (可多選)</div>
+                    <div class="filter-title">📂 分類</div>
                     <div class="checkbox-grid">
                         {% for cat in categories %}
                         <label class="checkbox-label">
-                            <input type="checkbox" name="category" value="{{ cat.id }}" 
-                                {% if cat.id|string in selected_cats %}checked{% endif %}>
+                            <input type="checkbox" name="category" value="{{ cat.id }}" {% if cat.id|string in selected_cats %}checked{% endif %}>
                             {{ cat.name }}
                         </label>
                         {% endfor %}
                     </div>
                 </div>
                 <div class="filter-group">
-                    <div class="filter-title">📖 狀態 (可多選)</div>
+                    <div class="filter-title">📖 狀態</div>
                     <div class="checkbox-grid">
                         {% for status in ['未讀', '閱讀中', '已讀完', '棄坑'] %}
                         <label class="checkbox-label">
-                            <input type="checkbox" name="status" value="{{ status }}"
-                                {% if status in selected_status %}checked{% endif %}>
+                            <input type="checkbox" name="status" value="{{ status }}" {% if status in selected_status %}checked{% endif %}>
                             {{ status }}
                         </label>
                         {% endfor %}
@@ -129,7 +139,7 @@
                     {% if book.cover_url %}
                     <img src="{{ book.cover_url }}" alt="封面">
                     {% else %}
-                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc;">無封面</div>
+                    <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#ccc;">無封面</div>
                     {% endif %}
                 </div>
                 <div class="book-info">
@@ -146,9 +156,7 @@
                 </div>
             </div>
             {% else %}
-            <div style="grid-column: 1 / -1; text-align: center; color: #888; margin-top: 50px;">
-                <h3>📭 找不到書籍</h3>
-            </div>
+            <div style="grid-column: 1 / -1; text-align: center; color: #888; margin-top: 50px;"><h3>📭 找不到書籍</h3></div>
             {% endfor %}
         </div>
     </div>
@@ -179,7 +187,6 @@
 
     <script>
         function openModal(card) {
-            // 從卡片的 data 屬性取得資料
             document.getElementById('m-title').textContent = card.dataset.title;
             document.getElementById('m-author').textContent = card.dataset.author;
             document.getElementById('m-publisher').textContent = card.dataset.publisher + (card.dataset.year ? ` (${card.dataset.year})` : '');
@@ -188,12 +195,9 @@
             document.getElementById('m-location').textContent = card.dataset.location;
             document.getElementById('m-desc').textContent = card.dataset.desc;
             document.getElementById('m-notes').textContent = card.dataset.notes;
-            
-            // 處理評分星星
             const rating = parseInt(card.dataset.rating) || 0;
             document.getElementById('m-rating').textContent = '⭐'.repeat(rating);
 
-            // 處理封面
             const coverUrl = card.dataset.cover;
             const imgEl = document.getElementById('m-cover');
             const noImgEl = document.getElementById('m-no-cover');
@@ -206,13 +210,9 @@
                 imgEl.style.display = 'none';
                 noImgEl.style.display = 'flex';
             }
-
             document.getElementById('bookModal').style.display = "block";
         }
-
-        function closeModal() {
-            document.getElementById('bookModal').style.display = "none";
-        }
+        function closeModal() { document.getElementById('bookModal').style.display = "none"; }
     </script>
 </body>
 </html>
