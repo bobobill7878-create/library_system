@@ -1,7 +1,5 @@
 Flask
 Flask-SQLAlchemy
-SQLAlchemy
-gunicorn
 psycopg2-binary
+gunicorn
 requests
-Werkzeug
