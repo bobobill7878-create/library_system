@@ -56,7 +56,7 @@ class Book(db.Model):
 # --- 初始化 ---
 with app.app_context():
     # ★★★ 請確保這兩行前面是對齊的 (建議用 4 個空白鍵) ★★★
-    db.drop_all()
+    #db.drop_all()
     db.create_all()
     
     # 預設分類 (如果資料庫是空的)
