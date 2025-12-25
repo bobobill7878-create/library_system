@@ -5,3 +5,5 @@ gunicorn
 requests
 pandas
 openpyxl
+requests
+beautifulsoup4
