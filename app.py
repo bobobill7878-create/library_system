@@ -54,7 +54,7 @@ class Book(db.Model):
 # --- 初始化 ---
 with app.app_context():
     # ★★★ 安全模式：這行加了 #，不會刪除資料 ★★★
-    db.drop_all()
+    #db.    #db.dr
     
     db.create_all()
 
