@@ -10,10 +10,14 @@
         
         /* 搜尋與按鈕 */
         .search-box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .search-row { display: flex; gap: 10px; margin-bottom: 15px; }
-        .search-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        .search-row { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        
+        /* 新增：搜尋類型下拉選單樣式 */
+        .search-select { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background-color: #f8f9fa; cursor: pointer; min-width: 100px; }
+        
+        .search-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; min-width: 200px; }
         .btn-search { padding: 10px 25px; background-color: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
-        .btn-reset { padding: 10px 15px; background-color: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; line-height: 1.5; font-size: 14px;}
+        .btn-reset { padding: 10px 15px; background-color: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px;}
         
         /* 篩選區塊 */
         .filter-section { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #eee; padding-top: 15px; }
@@ -47,11 +51,10 @@
         
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .add-btn { background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; }
-        
         .btn-tool { padding: 10px 15px; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 14px; display: flex; align-items: center; }
         .btn-tool:hover { opacity: 0.9; }
 
-        /* Modal 彈跳視窗 */
+        /* Modal */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
         .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 700px; border-radius: 10px; position: relative; }
         .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
@@ -60,14 +63,8 @@
         .modal-cover { width: 150px; flex-shrink: 0; }
         .modal-cover img { width: 100%; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
         .modal-details { flex-grow: 1; }
-        .modal-details h2 { margin-top: 0; color: #333; }
-        .modal-details p { margin: 8px 0; line-height: 1.6; color: #555; }
         .modal-label { font-weight: bold; color: #333; display: inline-block; width: 70px; }
-
-        @media (max-width: 600px) {
-            .modal-body { flex-direction: column; align-items: center; }
-            .modal-details { width: 100%; }
-        }
+        @media (max-width: 600px) { .modal-body { flex-direction: column; align-items: center; } }
     </style>
 </head>
 <body>
@@ -76,21 +73,27 @@
             <h1>📚 我的圖書館</h1>
             <div style="display: flex; gap: 10px; align-items: center;">
                 <a href="{{ url_for('export_excel') }}" class="btn-tool" style="background-color: #17a2b8;">📤 匯出</a>
-                
                 <form action="{{ url_for('import_excel') }}" method="POST" enctype="multipart/form-data" style="display: inline;">
                     <input type="file" name="file" id="importFile" style="display: none;" accept=".xlsx, .xls" onchange="this.form.submit()">
                     <button type="button" class="btn-tool" style="background-color: #ffc107; color: black;" onclick="document.getElementById('importFile').click()">📥 匯入</button>
                 </form>
-
                 <a href="{{ url_for('add_book') }}" class="add-btn">➕ 新增書籍</a>
             </div>
         </div>
 
         <form method="GET" action="/" class="search-box">
             <div class="search-row">
-                <input type="text" name="q" class="search-input" placeholder="輸入書名、作者或 ISBN..." value="{{ q }}">
+                <select name="search_type" class="search-select">
+                    <option value="all" {% if search_type == 'all' %}selected{% endif %}>全部欄位</option>
+                    <option value="title" {% if search_type == 'title' %}selected{% endif %}>書名</option>
+                    <option value="author" {% if search_type == 'author' %}selected{% endif %}>作者</option>
+                    <option value="publisher" {% if search_type == 'publisher' %}selected{% endif %}>出版社</option>
+                    <option value="isbn" {% if search_type == 'isbn' %}selected{% endif %}>ISBN</option>
+                </select>
+                
+                <input type="text" name="q" class="search-input" placeholder="輸入關鍵字..." value="{{ q }}">
                 <button type="submit" class="btn-search">🔍 搜尋</button>
-                <a href="/" class="btn-reset">清除條件</a>
+                <a href="/" class="btn-reset">清除</a>
             </div>
 
             <div class="filter-section">
@@ -131,7 +134,7 @@
                  data-rating="{{ book.rating }}"
                  data-cover="{{ book.cover_url or '' }}"
                  data-desc="{{ book.description or '暫無簡介' }}"
-                 data-notes="{{ book.notes or '無筆記' }}"
+                 data-notes="{{ book.notes or '無備註' }}"
                  data-year="{{ book.publish_year or '' }}"
                  data-location="{{ book.location or '未設定' }}">
                  
@@ -167,52 +170,4 @@
             <div class="modal-body">
                 <div class="modal-cover">
                     <img id="m-cover" src="" alt="封面" style="display:none;">
-                    <div id="m-no-cover" style="width:100%; height:200px; background:#eee; display:flex; align-items:center; justify-content:center; color:#999; border-radius:6px;">無封面</div>
-                </div>
-                <div class="modal-details">
-                    <h2 id="m-title"></h2>
-                    <p><span class="modal-label">作者:</span> <span id="m-author"></span></p>
-                    <p><span class="modal-label">出版社:</span> <span id="m-publisher"></span></p>
-                    <p><span class="modal-label">狀態:</span> <span id="m-status"></span></p>
-                    <p><span class="modal-label">ISBN:</span> <span id="m-isbn"></span></p>
-                    <p><span class="modal-label">位置:</span> <span id="m-location"></span></p>
-                    <p><span class="modal-label">評分:</span> <span id="m-rating" style="color:gold;"></span></p>
-                    <hr>
-                    <p><strong>📝 簡介:</strong><br><span id="m-desc"></span></p>
-                    <p><strong>📌 筆記:</strong><br><span id="m-notes"></span></p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function openModal(card) {
-            document.getElementById('m-title').textContent = card.dataset.title;
-            document.getElementById('m-author').textContent = card.dataset.author;
-            document.getElementById('m-publisher').textContent = card.dataset.publisher + (card.dataset.year ? ` (${card.dataset.year})` : '');
-            document.getElementById('m-status').textContent = card.dataset.status;
-            document.getElementById('m-isbn').textContent = card.dataset.isbn;
-            document.getElementById('m-location').textContent = card.dataset.location;
-            document.getElementById('m-desc').textContent = card.dataset.desc;
-            document.getElementById('m-notes').textContent = card.dataset.notes;
-            const rating = parseInt(card.dataset.rating) || 0;
-            document.getElementById('m-rating').textContent = '⭐'.repeat(rating);
-
-            const coverUrl = card.dataset.cover;
-            const imgEl = document.getElementById('m-cover');
-            const noImgEl = document.getElementById('m-no-cover');
-            
-            if (coverUrl && coverUrl !== 'None') {
-                imgEl.src = coverUrl;
-                imgEl.style.display = 'block';
-                noImgEl.style.display = 'none';
-            } else {
-                imgEl.style.display = 'none';
-                noImgEl.style.display = 'flex';
-            }
-            document.getElementById('bookModal').style.display = "block";
-        }
-        function closeModal() { document.getElementById('bookModal').style.display = "none"; }
-    </script>
-</body>
-</html>
+                    <div id="m-no-cover" style="
