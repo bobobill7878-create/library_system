@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-# --- 資料庫設定 (維持不變) ---
+# --- 資料庫設定 ---
 if 'RENDER' in os.environ:
     database_url = os.environ.get('DATABASE_URL')
     if database_url and database_url.startswith("postgres://"):
@@ -19,7 +19,7 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- 資料模型 (維持不變) ---
+# --- 資料模型 ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
@@ -51,53 +51,44 @@ class Book(db.Model):
 
 with app.app_context():
     db.create_all()
+    # 初始化預設分類
     if not Category.query.first():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '工具書', '其他']
         for c in cats: db.session.add(Category(name=c))
         db.session.commit()
 
-# --- API: ISBN 查詢 (配合您的前端邏輯) ---
+# --- API: ISBN 查詢 (供前端使用) ---
 @app.route('/api/lookup_isbn/<isbn>')
 def lookup_isbn(isbn):
-    """
-    伺服器端爬蟲：優先爬博客來，供前端 ISBN 查詢使用
-    """
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=headers, timeout=10)
         
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
-            # 嘗試抓第一筆結果
             item = soup.select_one('.table-search-tbody tr') or soup.select_one('.item')
             
             if item:
                 data = {}
-                # 圖片
                 img = item.select_one('img')
                 if img: data['cover_url'] = (img.get('data-original') or img.get('src') or '').split('?')[0]
                 
-                # 標題
                 title = item.select_one('h3 a, h4 a')
                 if title: data['title'] = title.get('title') or title.text.strip()
                 
-                # 作者
                 author = item.select_one('a[rel="go_author"]')
                 if author: data['author'] = author.text.strip()
                 
-                # 出版社
                 pub = item.select_one('a[rel="mid_publish"]')
                 if pub: data['publisher'] = pub.text.strip()
                 
-                # 日期
                 import re
                 m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', item.text)
                 if m:
                     data['year'] = m.group(1)
                     data['month'] = m.group(2)
                 
-                # 簡介
                 desc = item.select_one('.box_contents p, .txt_cont')
                 if desc: data['description'] = desc.text.strip()[:300] + "..."
 
@@ -105,11 +96,10 @@ def lookup_isbn(isbn):
                 
         return jsonify({'error': 'Not found'}), 404
     except Exception as e:
-        print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 # --- 頁面路由 ---
+
 @app.route('/')
 def index():
     query = Book.query
@@ -128,9 +118,10 @@ def index():
 def add_book():
     if request.method == 'POST':
         try:
-            # 處理新增分類
             cat_name = request.form.get('new_category')
             cat_id = request.form.get('category_id')
+            
+            # 如果輸入了新分類，先建立它
             if cat_name:
                 existing = Category.query.filter_by(name=cat_name).first()
                 if not existing:
@@ -172,5 +163,37 @@ def add_book():
     categories = Category.query.all()
     return render_template('add_book.html', categories=categories)
 
+# --- 這裡就是修復您報錯的關鍵 ---
+@app.route('/categories', methods=['GET', 'POST'])
+def manage_categories():
+    # 函式名稱 manage_categories 對應到 index.html 的 url_for('manage_categories')
+    if request.method == 'POST':
+        try:
+            name = request.form.get('name')
+            if name:
+                existing = Category.query.filter_by(name=name).first()
+                if not existing:
+                    db.session.add(Category(name=name))
+                    db.session.commit()
+        except Exception as e:
+            print(f"Error: {e}")
+            
+    categories = Category.query.all()
+    # 這裡指定渲染 categories.html
+    return render_template('categories.html', categories=categories)
+
+@app.route('/categories/delete/<int:id>', methods=['POST'])
+def delete_category(id):
+    try:
+        cat = Category.query.get_or_404(id)
+        # 簡單保護：有書就不給刪
+        if Book.query.filter_by(category_id=id).first():
+             return "無法刪除：還有書籍屬於此分類", 400
+        db.session.delete(cat)
+        db.session.commit()
+    except Exception as e:
+        print(f"Error: {e}")
+    return redirect(url_for('manage_categories'))
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
