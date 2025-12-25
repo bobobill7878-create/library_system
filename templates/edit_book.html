@@ -5,61 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>編輯書籍</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 20px; background-color: #f9f9f9; display: flex; flex-direction: column; align-items: center;}
-        form { max-width: 600px; width: 100%; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px;}
-        .btn-save { background-color: #007bff; }
-        .current-cover { text-align: center; margin-bottom: 15px; }
-        .current-cover img { max-width: 120px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; display: flex; justify-content: center; }
+        form { background: white; padding: 30px; border-radius: 10px; max-width: 600px; width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        .btn-group { margin-top: 25px; display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
+        .save { background-color: #28a745; flex: 2; }
+        .cancel { background-color: #6c757d; text-decoration: none; display: flex; align-items: center; justify-content: center; flex: 1; }
     </style>
 </head>
 <body>
-    <h1>✏️ 編輯書籍</h1>
-    
-    <form method="POST" action="{{ url_for('edit_book', id=book.id) }}" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data">
+        <h1>✏️ 編輯書籍</h1>
         
-        <div class="current-cover">
-            {% if book.cover_url %}
-            <p>目前封面：</p>
-            <img src="{{ book.cover_url }}">
-            {% endif %}
-        </div>
-
         <label>書名:</label>
         <input type="text" name="title" value="{{ book.title }}" required>
         
-        <label>作者:</label>
-        <input type="text" name="author" value="{{ book.author }}" required>
-        
-        <label>封面網址 (修改連結):</label>
-        <input type="text" name="cover_url" value="{{ book.cover_url or '' }}" placeholder="http://...">
+        <div style="display:flex; gap:15px;">
+            <div style="flex:1;"><label>作者:</label><input type="text" name="author" value="{{ book.author }}" required></div>
+            <div style="flex:1;"><label>出版社:</label><input type="text" name="publisher" value="{{ book.publisher or '' }}"></div>
+        </div>
 
-        <label>或上傳新封面檔案:</label>
-        <input type="file" name="cover_file" accept="image/*">
+        <div style="display:flex; gap:15px;">
+            <div style="flex:1;">
+                <label>分類:</label>
+                <select name="category">
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if book.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label>狀態:</label>
+                <select name="status">
+                    {% for s in ['未讀', '閱讀中', '已讀完', '棄坑'] %}
+                    <option value="{{ s }}" {% if book.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
 
-        <label>ISBN:</label>
-        <input type="text" name="isbn" value="{{ book.isbn or '' }}">
-
-        <label>分類:</label>
-        <select name="category">
-            {% for cat in categories %}
-            <option value="{{ cat.id }}" {% if book.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
-            {% endfor %}
+        <label>書籍版本:</label>
+        <select name="print_version">
+            <option value="">--請選擇--</option>
+            <option value="豪華首刷" {% if book.print_version == '豪華首刷' %}selected{% endif %}>✨ 豪華首刷</option>
+            <option value="首刷" {% if book.print_version == '首刷' %}selected{% endif %}>🔹 首刷</option>
+            <option value="再版" {% if book.print_version == '再版' %}selected{% endif %}>📖 再版</option>
         </select>
 
-        <label>狀態:</label>
-        <select name="status">
-            {% for s in ['未讀', '閱讀中', '已讀完', '棄坑'] %}
-            <option value="{{ s }}" {% if book.status == s %}selected{% endif %}>{{ s }}</option>
-            {% endfor %}
-        </select>
+        <label>評分 (0-5):</label>
+        <input type="number" name="rating" min="0" max="5" value="{{ book.rating }}">
 
-        <label>備註:</label>
+        <label>位置/書櫃:</label>
+        <input type="text" name="location" value="{{ book.location or '' }}">
+
+        <label>簡介:</label>
+        <textarea name="description" rows="4">{{ book.description or '' }}</textarea>
+
+        <label>備註 / 筆記:</label>
         <textarea name="notes" rows="3">{{ book.notes or '' }}</textarea>
+        
+        <label>封面 (若不修改請留空):</label>
+        <input type="text" name="cover_url" placeholder="圖片網址" value="{{ book.cover_url if book.cover_url and 'data:' not in book.cover_url else '' }}">
+        <input type="file" name="cover_file" accept="image/*" style="margin-top:5px;">
 
-        <button type="submit" class="btn btn-save">💾 儲存變更</button>
-        <a href="{{ url_for('index') }}" style="display:block; text-align:center; margin-top:15px; color:#666;">取消</a>
+        <div class="btn-group">
+            <button type="submit" class="btn save">💾 儲存修改</button>
+            <a href="/" class="btn cancel">取消</a>
+        </div>
     </form>
 </body>
 </html>
