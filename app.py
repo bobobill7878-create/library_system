@@ -55,9 +55,8 @@ class Book(db.Model):
 
 # --- 初始化 ---
 with app.app_context():
-    # ★★★ 注意：第一次執行新版本時，請將下面這行 db.drop_all() 的註解打開執行一次，然後再註解回去 ★★★
-     db.drop_all()
-    
+    # ★★★ 請確保這兩行前面是對齊的 (建議用 4 個空白鍵) ★★★
+    db.drop_all()
     db.create_all()
     
     # 預設分類 (如果資料庫是空的)
