@@ -7,8 +7,15 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # --- 設定 ---
-# 資料庫連線 (Render 會自動填入 DATABASE_URL)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///local.db')
+
+# 1. 取得 Render 提供的資料庫網址
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///local.db')
+
+# 2. ★★★ 關鍵修正：解決 Render 資料庫網址開頭是 postgres:// 導致報錯的問題 ★★★
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 設定圖片上傳路徑
@@ -44,13 +51,14 @@ class Book(db.Model):
     tags = db.Column(db.String(200))
     description = db.Column(db.Text)
     notes = db.Column(db.Text)
-    cover_url = db.Column(db.String(500)) # 儲存網址或檔案路徑
+    cover_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), onupdate=func.now())
 
 # --- 初始化 ---
 with app.app_context():
     db.create_all()
+    # 如果分類是空的，預先建立
     if not Category.query.first():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '其他']
         for c in cats:
@@ -67,7 +75,6 @@ def index():
 
     query = Book.query
 
-    # 關鍵字搜尋
     if q:
         query = query.filter(
             (Book.title.ilike(f'%{q}%')) | 
@@ -75,9 +82,9 @@ def index():
             (Book.isbn.ilike(f'%{q}%'))
         )
 
-    # Checkbox 多選過濾
     if selected_cats:
         query = query.filter(Book.category_id.in_(selected_cats))
+
     if selected_status:
         query = query.filter(Book.status.in_(selected_status))
 
@@ -130,7 +137,6 @@ def add_book():
     categories = Category.query.all()
     return render_template('add_book.html', categories=categories)
 
-# ★★★ 這裡修正了：使用 <int:id> 而不是 <int:book_id> ★★★
 @app.route('/edit/<int:id>', methods=['GET', 'POST'])
 def edit_book(id):
     book = Book.query.get_or_404(id)
@@ -172,7 +178,6 @@ def edit_book(id):
     categories = Category.query.all()
     return render_template('edit_book.html', book=book, categories=categories)
 
-# ★★★ 這裡也確認使用 <int:id> ★★★
 @app.route('/delete/<int:id>')
 def delete_book(id):
     book = Book.query.get_or_404(id)
@@ -182,7 +187,7 @@ def delete_book(id):
 
 @app.route('/api/lookup_isbn/<isbn>')
 def api_lookup(isbn):
-    return jsonify({"error": "Backend lookup skipped, use frontend"}), 404
+    return jsonify({"error": "Backend lookup skipped"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True)
