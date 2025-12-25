@@ -53,18 +53,19 @@ class Book(db.Model):
 
 # --- 初始化 ---
 with app.app_context():
-    # ★★★ 安全模式：這行加了 #，不會刪除資料 ★★★
-    #db.    #db.dr
+    # ★★★ 安全模式：這行有 #，不會刪除資料 ★★★
+    # db.drop_all()
     
     db.create_all()
 
+    # 預設分類 (若無資料時建立)
     if not Category.query.first():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '工具書', '其他']
         for c in cats:
             db.session.add(Category(name=c))
         db.session.commit()
 
-# --- 博客來爬蟲 API (新增功能) ---
+# --- 博客來爬蟲 API (支援多筆回傳) ---
 @app.route('/api/lookup_books_tw')
 def lookup_books_tw():
     keyword = request.args.get('q')
@@ -83,7 +84,7 @@ def lookup_books_tw():
 
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 嘗試抓取搜尋結果
+        # 抓取搜尋結果列表
         results = soup.select('.table-search-tbody tr')
         if not results:
             results = soup.select('.item') # 網格模式
@@ -91,47 +92,70 @@ def lookup_books_tw():
         if not results:
             return jsonify({'success': False, 'message': '博客來找不到此書'}), 404
 
-        item = results[0]
-        data = {}
+        book_list = []
         
-        # 圖片
-        img_tag = item.select_one('img')
-        if img_tag:
-            src = img_tag.get('data-original') or img_tag.get('src')
-            if src:
-                data['cover_url'] = src.split('?')[0] # 拿掉參數取大圖
+        # 限制最多抓 20 筆
+        for item in results[:20]:
+            try:
+                data = {}
+                
+                # 圖片
+                img_tag = item.select_one('img')
+                if img_tag:
+                    src = img_tag.get('data-original') or img_tag.get('src')
+                    if src:
+                        data['cover_url'] = src.split('?')[0]
+                else:
+                    data['cover_url'] = ''
 
-        # 書名
-        title_tag = item.select_one('h3 a, h4 a, .box_header h3 a')
-        if title_tag:
-            data['title'] = title_tag.get('title') or title_tag.text.strip()
-            
-        # 作者
-        author_tag = item.select_one('a[rel="go_author"]')
-        if author_tag:
-            data['author'] = author_tag.text.strip()
-        else:
-            data['author'] = '未知'
+                # 書名
+                title_tag = item.select_one('h3 a, h4 a, .box_header h3 a')
+                if title_tag:
+                    data['title'] = title_tag.get('title') or title_tag.text.strip()
+                else:
+                    continue # 沒書名就跳過
 
-        # 出版社
-        pub_tag = item.select_one('a[rel="mid_publish"]')
-        if pub_tag:
-            data['publisher'] = pub_tag.text.strip()
-            
-        # 出版日期解析
-        text_content = item.text
-        import re
-        date_match = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', text_content)
-        if date_match:
-            data['year'] = date_match.group(1)
-            data['month'] = date_match.group(2)
-        
-        # 簡介 (嘗試抓取)
-        desc_tag = item.select_one('.box_contents p, .txt_cont')
-        if desc_tag:
-            data['description'] = desc_tag.text.strip()
+                # 作者
+                author_tag = item.select_one('a[rel="go_author"]')
+                if author_tag:
+                    data['author'] = author_tag.text.strip()
+                else:
+                    data['author'] = '未知'
 
-        return jsonify({'success': True, 'data': data})
+                # 出版社
+                pub_tag = item.select_one('a[rel="mid_publish"]')
+                if pub_tag:
+                    data['publisher'] = pub_tag.text.strip()
+                else:
+                    data['publisher'] = ''
+                    
+                # 出版日期
+                text_content = item.text
+                import re
+                date_match = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', text_content)
+                if date_match:
+                    data['year'] = date_match.group(1)
+                    data['month'] = date_match.group(2)
+                else:
+                    data['year'] = ''
+                    data['month'] = ''
+                
+                # 簡介
+                desc_tag = item.select_one('.box_contents p, .txt_cont')
+                if desc_tag:
+                    # 截斷簡介避免太長
+                    data['description'] = desc_tag.text.strip()[:300] + "..." 
+                else:
+                    data['description'] = ''
+
+                book_list.append(data)
+            except Exception as loop_e:
+                continue
+
+        if len(book_list) == 0:
+             return jsonify({'success': False, 'message': '解析失敗'}), 404
+
+        return jsonify({'success': True, 'results': book_list})
 
     except Exception as e:
         print(f"爬蟲錯誤: {e}")
@@ -143,7 +167,6 @@ def lookup_books_tw():
 def index():
     query = Book.query
     
-    # 搜尋功能
     q = request.args.get('q')
     if q:
         query = query.filter(
@@ -152,15 +175,12 @@ def index():
             (Book.isbn.contains(q))
         )
     
-    # 分類篩選
     cat_id = request.args.get('category')
     if cat_id:
         query = query.filter(Book.category_id == cat_id)
 
-    # 排序：未讀優先，然後按更新時間
     books = query.order_by(Book.status.asc(), Book.updated_at.desc()).all()
     categories = Category.query.all()
-    
     return render_template('index.html', books=books, categories=categories)
 
 @app.route('/add', methods=['GET', 'POST'])
@@ -181,7 +201,6 @@ def add_book():
                 else:
                     cat_id = existing.id
 
-            # 處理年份/月份
             y = request.form.get('publish_year')
             m = request.form.get('publish_month')
             
@@ -266,7 +285,6 @@ def delete_book(id):
 
 @app.route('/categories')
 def manage_categories():
-    # 統計每個分類有多少本書
     stats = db.session.query(
         Category, db.func.count(Book.id)
     ).outerjoin(Book).group_by(Category.id).all()
@@ -312,10 +330,8 @@ def import_excel():
         df = pd.read_excel(file)
         count = 0
         for _, row in df.iterrows():
-            # 簡單檢查必填
             if pd.isna(row.get('書名')): continue
             
-            # 處理分類
             cat_id = None
             if not pd.isna(row.get('分類')):
                 c_name = str(row['分類']).strip()
@@ -326,7 +342,6 @@ def import_excel():
                     db.session.commit()
                 cat_id = cat.id
             
-            # 建立書籍
             book = Book(
                 title=row.get('書名'),
                 author=row.get('作者') if not pd.isna(row.get('作者')) else None,
