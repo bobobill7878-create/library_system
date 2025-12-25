@@ -94,6 +94,18 @@
                 </select>
             </div>
         </div>
+
+        <div class="row">
+            <div>
+                <label>書籍版本:</label>
+                <select name="print_version" id="print_version">
+                    <option value="">--請選擇--</option>
+                    <option value="豪華首刷">✨ 豪華首刷</option>
+                    <option value="首刷">🔹 首刷</option>
+                    <option value="再版">📖 再版</option>
+                </select>
+            </div>
+        </div>
         
         <label>封面圖片:</label>
         <div class="row">
@@ -138,9 +150,9 @@
         }
 
         function resetFormPartial() {
-            // 清空所有欄位，包含備註
             ['isbn','title','author','publisher','year','month','description','notes','cover_url','cover_file'].forEach(id => document.getElementById(id).value = '');
             document.getElementById('status').value = '未讀';
+            document.getElementById('print_version').value = '';
             document.getElementById('link-container').style.display = 'none';
             document.getElementById('cover-preview').style.display = 'none';
             document.getElementById('book-cover-img').src = '';
