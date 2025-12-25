@@ -170,4 +170,49 @@
             <div class="modal-body">
                 <div class="modal-cover">
                     <img id="m-cover" src="" alt="封面" style="display:none;">
-                    <div id="m-no-cover" style="
+                    <div id="m-no-cover" style="width:100%; height:200px; background:#eee; display:flex; align-items:center; justify-content:center; color:#999; border-radius:6px;">無封面</div>
+                </div>
+                <div class="modal-details">
+                    <h2 id="m-title"></h2>
+                    <p><span class="modal-label">作者:</span> <span id="m-author"></span></p>
+                    <p><span class="modal-label">出版社:</span> <span id="m-publisher"></span></p>
+                    <p><span class="modal-label">狀態:</span> <span id="m-status"></span></p>
+                    <p><span class="modal-label">ISBN:</span> <span id="m-isbn"></span></p>
+                    <p><span class="modal-label">位置:</span> <span id="m-location"></span></p>
+                    <p><span class="modal-label">評分:</span> <span id="m-rating" style="color:gold;"></span></p>
+                    <hr>
+                    <p><strong>📝 簡介:</strong><br><span id="m-desc"></span></p>
+                    <p><strong>📌 備註/筆記:</strong><br><span id="m-notes"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal(card) {
+            document.getElementById('m-title').textContent = card.dataset.title;
+            document.getElementById('m-author').textContent = card.dataset.author;
+            document.getElementById('m-publisher').textContent = card.dataset.publisher + (card.dataset.year ? ` (${card.dataset.year})` : '');
+            document.getElementById('m-status').textContent = card.dataset.status;
+            document.getElementById('m-isbn').textContent = card.dataset.isbn;
+            document.getElementById('m-location').textContent = card.dataset.location;
+            document.getElementById('m-desc').textContent = card.dataset.desc;
+            document.getElementById('m-notes').textContent = card.dataset.notes; // 顯示備註
+            const rating = parseInt(card.dataset.rating) || 0;
+            document.getElementById('m-rating').textContent = '⭐'.repeat(rating);
+
+            const coverUrl = card.dataset.cover;
+            const imgEl = document.getElementById('m-cover');
+            const noImgEl = document.getElementById('m-no-cover');
+            
+            if (coverUrl && coverUrl !== 'None') {
+                imgEl.src = coverUrl; imgEl.style.display = 'block'; noImgEl.style.display = 'none';
+            } else {
+                imgEl.style.display = 'none'; noImgEl.style.display = 'flex';
+            }
+            document.getElementById('bookModal').style.display = "block";
+        }
+        function closeModal() { document.getElementById('bookModal').style.display = "none"; }
+    </script>
+</body>
+</html>
