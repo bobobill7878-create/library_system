@@ -55,7 +55,7 @@
         <div class="header">
             <h1>📚 我的圖書館</h1>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <a href="{{ url_for('manage_categories') }}" class="btn-tool" style="background-color: #6f42c1;">🏷️ 分類管理</a>
+                <a href="{{ url_for('categoriesmanage_\catego"{{ url_f style="background-color: #6f42c1;">🏷️ 分類管理</a>
                 <a href="{{ url_for('export_excel') }}" class="btn-tool" style="background-color: #17a2b8;">📤 匯出</a>
                 <form action="{{ url_for('import_excel') }}" method="POST" enctype="multipart/form-data" style="display: inline;">
                     <input type="file" name="file" id="importFile" style="display: none;" accept=".xlsx, .xls" onchange="this.form.submit()">
