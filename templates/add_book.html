@@ -1,135 +1,158 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>新增圖書</title>
+    <title>新增書籍</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f9f9f9; }
-        .nav-bar { width: 100%; max-width: 650px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .btn-home { background-color: #6c757d; color: white; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; font-size: 14px; }
-        form { max-width: 650px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; background-color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        label { font-weight: bold; color: #555; display: block; margin-top: 15px; margin-bottom: 5px; }
-        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
-        
-        .row { display: flex; gap: 15px; } 
-        .row > div { flex: 1; }
-        
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; white-space: nowrap; }
-        .btn-scan { background-color: #17a2b8; }
-        .btn-search { background-color: #007bff; }
-        .btn-submit { background-color: #28a745; width: 100%; font-size: 18px; margin-top: 25px; padding: 12px; }
-        
-        .external-links { margin-top: 10px; padding: 10px; background-color: #f1f1f1; border-radius: 8px; font-size: 14px; }
-        .external-links a { display: inline-block; text-decoration: none; color: white; padding: 5px 10px; border-radius: 4px; margin-right: 5px; font-size: 12px; }
-        .link-books { background-color: #8cc63f; } .link-momo { background-color: #d0021b; } .link-taaze { background-color: #ff9900; } .link-google { background-color: #4285f4; }
-
-        #reader-container { display: none; margin-bottom: 15px; border: 2px dashed #007bff; padding: 10px; border-radius: 8px; background: #e9f7fe; text-align: center; }
-        #reader { width: 100%; max-width: 400px; margin: 0 auto; }
-        .cover-preview { display: none; margin: 15px auto; width: 150px; text-align: center; border: 1px solid #ddd; padding: 5px; background: #fff; }
-        .cover-preview img { width: 100%; border-radius: 4px; }
-        .message-box { min-height: 20px; font-size: 14px; margin-top: 5px; font-weight: bold; }
-        .input-group { display: flex; gap: 8px; align-items: center; }
+        .preview-img { max-width: 150px; max-height: 200px; object-fit: cover; border: 1px solid #ddd; margin-top: 10px; display: none; }
+        .scanner-box { width: 100%; max-width: 400px; margin: 0 auto; display: none; }
+        .external-links a { margin-right: 10px; text-decoration: none; }
+        #api-message { font-weight: bold; margin-left: 10px; }
     </style>
 </head>
-<body>
-    <div class="nav-bar">
-        <a href="/" class="btn-home">⬅ 回首頁</a>
-        <h1 style="margin:0;">➕ 新增圖書</h1>
-        <div style="width:80px;"></div>
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>📖 新增書籍</h2>
+            <a href="/" class="btn btn-secondary">回首頁</a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div id="reader-container" class="scanner-box mb-3">
+                    <div id="reader"></div>
+                    <button type="button" class="btn btn-danger w-100 mt-2" onclick="stopScanner()">關閉鏡頭</button>
+                </div>
+
+                <form id="addBookForm" onsubmit="submitForm(event)">
+                    
+                    <div class="row g-2 mb-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">ISBN (國際書號)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="isbn" id="isbn" placeholder="掃描或輸入..." onkeypress="handleEnter(event, 'isbn')">
+                                <button type="button" class="btn btn-outline-primary" onclick="startScanner()">📷</button>
+                                <button type="button" class="btn btn-primary" onclick="lookupBookData('isbn')">🔍</button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">書名 <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="title" id="title" required onkeypress="handleEnter(event, 'title')">
+                                <button type="button" class="btn btn-outline-secondary" onclick="lookupBookData('title')">搜書名</button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <small id="api-message"></small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3 external-links" id="link-container" style="display:none;">
+                        <small class="text-muted">快速查詢：</small>
+                        <a href="#" target="_blank" id="link-books" class="badge bg-success">博客來</a>
+                        <a href="#" target="_blank" id="link-momo" class="badge bg-danger">Momo</a>
+                        <a href="#" target="_blank" id="link-taaze" class="badge bg-warning text-dark">讀冊</a>
+                        <a href="#" target="_blank" id="link-google" class="badge bg-info text-dark">Google</a>
+                    </div>
+
+                    <hr>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">作者</label>
+                            <input type="text" class="form-control" name="author" id="author">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">出版社</label>
+                            <input type="text" class="form-control" name="publisher" id="publisher">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-sm btn-outline-secondary mb-3 w-100" type="button" data-bs-toggle="collapse" data-bs-target="#advancedInfo">
+                        🔽 顯示/隱藏 詳細資料
+                    </button>
+                    
+                    <div class="collapse show" id="advancedInfo">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">分類</label>
+                                <select class="form-select" name="category_id" id="category_id">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="text" class="form-control mt-2" name="new_category" placeholder="或新增分類..." style="font-size: 0.9em;">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">系列/集數</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" name="series" placeholder="系列名">
+                                    <input type="text" class="form-control" name="volume" placeholder="Vol." style="max-width: 80px;">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">閱讀狀態</label>
+                                <select class="form-select" name="status" id="status">
+                                    <option value="未讀">🔴 未讀</option>
+                                    <option value="閱讀中">🟡 閱讀中</option>
+                                    <option value="已讀">🟢 已讀</option>
+                                    <option value="棄書">⚫ 棄書</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">出版日期</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="publish_year" id="year" placeholder="年">
+                                    <input type="number" class="form-control" name="publish_month" id="month" placeholder="月">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">版本</label>
+                                <select class="form-select" name="print_version" id="print_version">
+                                    <option value="">--選擇--</option>
+                                    <option value="平裝">平裝</option>
+                                    <option value="精裝">精裝</option>
+                                    <option value="電子書">電子書</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">評分 (1-5)</label>
+                                <input type="number" class="form-control" name="rating" min="1" max="5">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">簡介</label>
+                            <textarea class="form-control" name="description" id="description" rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 p-3 bg-white border rounded">
+                        <label class="form-label fw-bold">封面圖片</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">網址</span>
+                            <input type="text" class="form-control" name="cover_url" id="cover_url" placeholder="https://..." onchange="updatePreviewFromUrl()">
+                        </div>
+                        <div id="cover-preview" class="preview-img text-center">
+                            <img id="book-cover-img" src="" alt="封面預覽" style="width:100%; height:100%; object-fit:cover;">
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" id="submit-btn" class="btn btn-primary btn-lg">💾 儲存書籍</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
-    <form id="addBookForm" onsubmit="submitForm(event)" enctype="multipart/form-data">
-        <div id="reader-container">
-            <div id="reader"></div>
-            <button type="button" class="btn" style="background:#dc3545; margin-top:10px;" onclick="stopScanner()">關閉鏡頭</button>
-        </div>
-        
-        <label>ISBN (國際標準書號):</label>
-        <div class="input-group">
-            <input type="text" id="isbn" name="isbn" placeholder="掃描或輸入 ISBN..." oninput="updateExternalLinks()" onkeydown="handleEnter(event, 'isbn')">
-            <button type="button" class="btn btn-scan" onclick="startScanner()">📷 掃描</button>
-            <button type="button" class="btn btn-search" onclick="lookupBookData('isbn')">🔍 查 ISBN</button>
-        </div>
-        
-        <div class="external-links" id="link-container" style="display:none;">
-            <span>找不到？試試外部搜尋：</span>
-            <a href="#" target="_blank" id="link-books" class="link-books">博客來</a>
-            <a href="#" target="_blank" id="link-momo" class="link-momo">Momo</a>
-            <a href="#" target="_blank" id="link-taaze" class="link-taaze">讀冊</a>
-            <a href="#" target="_blank" id="link-google" class="link-google">Google</a>
-        </div>
-        <div id="api-message" class="message-box"></div>
-
-        <div id="cover-preview" class="cover-preview"><img id="book-cover-img" src=""></div>
-
-        <label>書名 <span style="color:red">*</span>:</label> 
-        <div class="input-group">
-            <input type="text" id="title" name="title" required placeholder="輸入書名..." oninput="updateExternalLinks()" onkeydown="handleEnter(event, 'title')">
-            <button type="button" class="btn btn-search" style="background-color: #6c757d;" onclick="lookupBookData('title')">🔍 查書名</button>
-        </div>
-
-        <div class="row">
-            <div><label>作者 <span style="color:red">*</span>:</label><input type="text" id="author" name="author" required></div>
-            <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
-        </div>
-
-        <div class="row">
-            <div>
-                <label>分類:</label>
-                <select name="category" id="category">
-                    {% for cat in categories %}
-                    <option value="{{ cat.id }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label>狀態:</label>
-                <select name="status" id="status">
-                    <option value="未讀">🔴 未讀</option>
-                    <option value="閱讀中">🔵 閱讀中</option>
-                    <option value="已讀完">🟢 已讀完</option>
-                    <option value="棄坑">⚫ 棄坑</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="row">
-            <div>
-                <label>書籍版本:</label>
-                <select name="print_version" id="print_version">
-                    <option value="">--請選擇--</option>
-                    <option value="豪華首刷">✨ 豪華首刷</option>
-                    <option value="首刷">🔹 首刷</option>
-                    <option value="再版">📖 再版</option>
-                </select>
-            </div>
-        </div>
-        
-        <label>封面圖片:</label>
-        <div class="row">
-            <div>
-                <input type="text" id="cover_url" name="cover_url" placeholder="圖片網址..." oninput="updatePreviewFromUrl()">
-                <div style="font-size:12px; color:#888; margin-top:2px;">或是</div>
-                <input type="file" id="cover_file" name="cover_file" accept="image/*" onchange="updatePreviewFromFile(this)">
-            </div>
-        </div>
-
-        <div class="row">
-            <div><label>出版年:</label><input type="number" id="year" name="year"></div>
-            <div><label>出版月:</label><input type="number" id="month" name="month"></div>
-        </div>
-        
-        <label>大綱 / 簡介:</label>
-        <textarea id="description" name="description" rows="3"></textarea>
-
-        <label>備註 / 筆記 (Notes):</label>
-        <textarea id="notes" name="notes" rows="2" placeholder="輸入個人備註..."></textarea>
-        
-        <button type="submit" class="btn btn-submit" id="submit-btn">💾 儲存並新增下一本</button>
-    </form>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function submitForm(event) {
             event.preventDefault();
@@ -150,7 +173,7 @@
         }
 
         function resetFormPartial() {
-            ['isbn','title','author','publisher','year','month','description','notes','cover_url','cover_file'].forEach(id => document.getElementById(id).value = '');
+            ['isbn','title','author','publisher','year','month','description','cover_url'].forEach(id => document.getElementById(id).value = '');
             document.getElementById('status').value = '未讀';
             document.getElementById('print_version').value = '';
             document.getElementById('link-container').style.display = 'none';
@@ -171,29 +194,75 @@
             } else { c.style.display = 'none'; }
         }
 
+        // ★★★ 核心：先找博客來，失敗找 Google ★★★
         function lookupBookData(type) {
-            let q = type === 'isbn' ? `isbn:${document.getElementById('isbn').value.replace(/[- ]/g,'')}` : `intitle:${document.getElementById('title').value}`;
-            const msg = document.getElementById('api-message');
-            msg.textContent = "🔍 搜尋中...";
+            let key = type === 'isbn' ? document.getElementById('isbn').value : document.getElementById('title').value;
+            if(!key) { alert("請輸入內容"); return; }
             
+            const msg = document.getElementById('api-message');
+            msg.textContent = "🐢 爬蟲前往博客來搜尋中...請稍候";
+            msg.style.color = "blue";
+            
+            // 呼叫我們自己的後端 (app.py)
+            fetch(`/api/lookup_books_tw?q=${encodeURIComponent(key)}`)
+            .then(r => r.json())
+            .then(resp => {
+                if(resp.success) {
+                    const data = resp.data;
+                    if(data.title) document.getElementById('title').value = data.title;
+                    if(data.author) document.getElementById('author').value = data.author;
+                    if(data.publisher) document.getElementById('publisher').value = data.publisher;
+                    if(data.year) document.getElementById('year').value = data.year;
+                    if(data.month) document.getElementById('month').value = data.month;
+                    if(data.description) document.getElementById('description').value = data.description;
+                    if(data.cover_url) {
+                        document.getElementById('cover_url').value = data.cover_url;
+                        updatePreviewFromUrl();
+                    }
+                    msg.textContent = "✅ 成功從博客來抓取資料！";
+                    msg.style.color = "green";
+                    updateExternalLinks();
+                } else {
+                    msg.textContent = "⚠️ 博客來找不到，嘗試 Google...";
+                    fallbackGoogle(key); 
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                msg.textContent = "❌ 連線錯誤，嘗試 Google...";
+                fallbackGoogle(key);
+            });
+        }
+
+        // 備用方案 (Google Books API)
+        function fallbackGoogle(keyword) {
+            let q = `isbn:${keyword.replace(/[- ]/g,'')}`;
+            if(keyword.length < 10) q = `intitle:${keyword}`;
+
             fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
             .then(r=>r.json()).then(data => {
+                const msg = document.getElementById('api-message');
                 if(data.totalItems > 0) {
                     const i = data.items[0].volumeInfo;
                     if(i.title) document.getElementById('title').value = i.title;
                     if(i.authors) document.getElementById('author').value = i.authors.join(', ');
                     if(i.publisher) document.getElementById('publisher').value = i.publisher;
+                    if(i.publishedDate) {
+                        let d = i.publishedDate.split('-');
+                        if(d[0]) document.getElementById('year').value = d[0];
+                        if(d[1]) document.getElementById('month').value = d[1];
+                    }
                     if(i.description) document.getElementById('description').value = i.description;
-                    if(i.publishedDate) document.getElementById('year').value = i.publishedDate.split('-')[0];
                     if(i.imageLinks) {
                         document.getElementById('cover_url').value = (i.imageLinks.thumbnail||'').replace('http://','https://');
                         updatePreviewFromUrl();
                     }
+                    msg.textContent = "✅ Google 有資料 (博客來無資料)";
+                    msg.style.color = "orange";
                     updateExternalLinks();
-                    msg.textContent = "✅ 成功找到資料！";
                 } else {
-                    msg.textContent = "⚠️ 找不到資料，請嘗試外部搜尋。";
-                    updateExternalLinks();
+                    msg.textContent = "❌ 完全找不到資料，請手動輸入。";
+                    msg.style.color = "red";
                 }
             });
         }
@@ -212,13 +281,6 @@
             const u = document.getElementById('cover_url').value; 
             const b = document.getElementById('cover-preview');
             if(u){ document.getElementById('book-cover-img').src=u; b.style.display='block'; } else { b.style.display='none'; }
-        }
-        function updatePreviewFromFile(inp) {
-            if(inp.files[0]){
-                const r = new FileReader();
-                r.onload = e => { document.getElementById('book-cover-img').src=e.target.result; document.getElementById('cover-preview').style.display='block'; };
-                r.readAsDataURL(inp.files[0]);
-            }
         }
     </script>
 </body>
