@@ -7,106 +7,329 @@
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f9f9f9; }
-        form { max-width: 650px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; background-color: #fff; }
-        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        .row { display: flex; gap: 15px; } .row > div { flex: 1; }
-        .cover-preview { display: none; margin: 10px auto; width: 150px; text-align: center; }
-        .cover-preview img { width: 100%; border: 1px solid #ddd; }
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; }
-        .btn-scan { background-color: #17a2b8; margin-bottom: 15px; }
-        .btn-submit { background-color: #28a745; width: 100%; font-size: 16px; }
-        .message-box { color: #dc3545; margin: 10px 0; }
-        #reader-container { display: none; margin-bottom: 15px; border: 2px dashed #007bff; padding: 10px; }
+        
+        /* 頁面頂部導航列 */
+        .nav-bar { width: 100%; max-width: 650px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav-bar h1 { margin: 0; color: #333; font-size: 24px; }
+        .btn-home { background-color: #6c757d; color: white; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-flex; align-items: center; }
+        .btn-home:hover { background-color: #5a6268; }
+
+        form { max-width: 650px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; background-color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        
+        label { font-weight: bold; color: #555; display: block; margin-top: 15px; margin-bottom: 5px; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        input:focus, textarea:focus { border-color: #007bff; outline: none; }
+        
+        .row { display: flex; gap: 15px; } 
+        .row > div { flex: 1; }
+        
+        /* 按鈕樣式 */
+        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; transition: background 0.2s; white-space: nowrap; }
+        .btn-scan { background-color: #17a2b8; }
+        .btn-scan:hover { background-color: #138496; }
+        .btn-search { background-color: #007bff; }
+        .btn-search:hover { background-color: #0069d9; }
+        .btn-submit { background-color: #28a745; width: 100%; font-size: 18px; margin-top: 25px; padding: 12px; }
+        .btn-submit:hover { background-color: #218838; }
+        
+        /* 外部連結區塊 */
+        .external-links { margin-top: 10px; padding: 10px; background-color: #f1f1f1; border-radius: 8px; font-size: 14px; }
+        .external-links span { color: #666; margin-right: 10px; }
+        .external-links a { display: inline-block; text-decoration: none; color: white; padding: 5px 10px; border-radius: 4px; margin-right: 5px; font-size: 12px; transition: opacity 0.2s; }
+        .external-links a:hover { opacity: 0.8; }
+        .link-books { background-color: #8cc63f; }
+        .link-momo { background-color: #d0021b; }
+        .link-taaze { background-color: #ff9900; }
+        .link-google { background-color: #4285f4; }
+
+        /* 掃描器與預覽 */
+        #reader-container { display: none; margin-bottom: 15px; border: 2px dashed #007bff; padding: 10px; border-radius: 8px; background: #e9f7fe; text-align: center; }
+        #reader { width: 100%; max-width: 400px; margin: 0 auto; }
+        
+        .cover-preview { display: none; margin: 15px auto; width: 150px; text-align: center; padding: 5px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
+        .cover-preview img { width: 100%; height: auto; border-radius: 4px; display: block; }
+
+        .message-box { min-height: 20px; font-size: 14px; margin-top: 5px; font-weight: bold; }
+        .input-group { display: flex; gap: 8px; align-items: center; }
     </style>
 </head>
 <body>
-    <h1>➕ 新增圖書</h1>
-    <form method="POST" enctype="multipart/form-data">
+    
+    <div class="nav-bar">
+        <a href="/" class="btn-home">⬅ 回首頁</a>
+        <h1>➕ 新增圖書</h1>
+        <div style="width: 80px;"></div> </div>
+
+    <form id="addBookForm" onsubmit="submitForm(event)" enctype="multipart/form-data">
         
-        <div id="reader-container"><div id="reader"></div><button type="button" onclick="stopScanner()">關閉鏡頭</button></div>
+        <div id="reader-container">
+            <div id="reader"></div>
+            <button type="button" class="btn" style="background:#dc3545; margin-top:10px;" onclick="stopScanner()">關閉鏡頭</button>
+        </div>
         
-        <label>ISBN:</label>
-        <div style="display:flex; gap:10px;">
-            <input type="text" id="isbn" name="isbn" placeholder="輸入 ISBN 後按 Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();lookupBookData();}">
+        <label>ISBN (國際標準書號):</label>
+        <div class="input-group">
+            <input type="text" id="isbn" name="isbn" placeholder="掃描或輸入 ISBN..." oninput="updateExternalLinks()" onkeydown="handleEnter(event, 'isbn')">
             <button type="button" class="btn btn-scan" onclick="startScanner()">📷 掃描</button>
-            <button type="button" class="btn btn-scan" style="background:#007bff" onclick="lookupBookData()">查詢</button>
+            <button type="button" class="btn btn-search" onclick="lookupBookData('isbn')">🔍 查 ISBN</button>
         </div>
-        <div id="isbn-message" class="message-box"></div>
-
-        <label>封面網址 (或下方上傳檔案):</label>
-        <input type="text" id="cover_url" name="cover_url" placeholder="圖片網址..." oninput="updateCoverPreview()">
-        <div id="cover-preview" class="cover-preview"><img id="book-cover-img" src=""></div>
-
-        <label>書名 *:</label> <input type="text" id="title" name="title" required>
-        <div class="row">
-            <div><label>作者 *:</label><input type="text" id="author" name="author" required></div>
-            <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
+        
+        <div class="external-links" id="link-container" style="display:none;">
+            <span>找不到？試試外部搜尋：</span>
+            <a href="#" target="_blank" id="link-books" class="link-books">博客來</a>
+            <a href="#" target="_blank" id="link-momo" class="link-momo">Momo</a>
+            <a href="#" target="_blank" id="link-taaze" class="link-taaze">讀冊</a>
+            <a href="#" target="_blank" id="link-google" class="link-google">Google</a>
         </div>
+        
+        <div id="api-message" class="message-box"></div>
+
+        <div id="cover-preview" class="cover-preview">
+            <img id="book-cover-img" src="">
+            <p style="font-size:12px; color:#666; margin:5px 0;">封面預覽</p>
+        </div>
+
+        <label>書名 <span style="color:red">*</span>:</label> 
+        <div class="input-group">
+            <input type="text" id="title" name="title" required placeholder="輸入書名..." oninput="updateExternalLinks()" onkeydown="handleEnter(event, 'title')">
+            <button type="button" class="btn btn-search" style="background-color: #6c757d;" onclick="lookupBookData('title')">🔍 查書名</button>
+        </div>
+
         <div class="row">
-            <div><label>分類:</label>
-                <select name="category">
-                    {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+            <div>
+                <label>作者 <span style="color:red">*</span>:</label>
+                <input type="text" id="author" name="author" required>
+            </div>
+            <div>
+                <label>出版社:</label>
+                <input type="text" id="publisher" name="publisher">
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label>分類:</label>
+                <select name="category" id="category">
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}">{{ cat.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
-            <div><label>狀態:</label>
-                <select name="status">
-                    <option value="未讀">未讀</option>
-                    <option value="閱讀中">閱讀中</option>
-                    <option value="已讀完">已讀完</option>
-                    <option value="棄坑">棄坑</option>
+            <div>
+                <label>狀態:</label>
+                <select name="status" id="status">
+                    <option value="未讀" selected>🔴 未讀</option>
+                    <option value="閱讀中">🔵 閱讀中</option>
+                    <option value="已讀完">🟢 已讀完</option>
+                    <option value="棄坑">⚫ 棄坑</option>
                 </select>
             </div>
         </div>
+        
+        <label>封面圖片:</label>
+        <div class="row">
+            <div>
+                <input type="text" id="cover_url" name="cover_url" placeholder="貼上圖片網址..." oninput="updatePreviewFromUrl()">
+                <div style="font-size:12px; color:#888; margin-top:2px;">或是</div>
+                <input type="file" id="cover_file" name="cover_file" accept="image/*" onchange="updatePreviewFromFile(this)">
+            </div>
+        </div>
+
         <div class="row">
             <div><label>出版年:</label><input type="number" id="year" name="year"></div>
             <div><label>出版月:</label><input type="number" id="month" name="month"></div>
         </div>
         
-        <label>上傳封面檔案 (選填):</label>
-        <input type="file" name="cover_file" accept="image/*">
+        <label>大綱/簡介:</label>
+        <textarea id="description" name="description" rows="4"></textarea>
 
-        <label>大綱:</label><textarea id="description" name="description" rows="3"></textarea>
+        <label>個人筆記:</label>
+        <textarea id="notes" name="notes" rows="2"></textarea>
         
-        <button type="submit" class="btn btn-submit">儲存</button>
+        <button type="submit" class="btn btn-submit" id="submit-btn">💾 儲存並新增下一本</button>
     </form>
 
     <script>
+        // --- ★★★ 核心功能：不換頁提交表單 ★★★ ---
+        function submitForm(event) {
+            event.preventDefault(); // 阻止瀏覽器預設的跳頁行為
+            
+            const form = event.target;
+            const formData = new FormData(form);
+            const btn = document.getElementById('submit-btn');
+            
+            // 變更按鈕狀態避免重複點擊
+            const originalBtnText = btn.innerHTML;
+            btn.innerHTML = "⏳ 儲存中...";
+            btn.disabled = true;
+
+            fetch('/', { // 發送到根目錄 (或原本的 action 地址)
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 1. 顯示成功訊息
+                    alert('✅ 書籍已新增成功！\n您可以繼續輸入下一本。');
+                    
+                    // 2. 清空表單 (除了分類，因為通常會連續輸入同分類的書)
+                    resetFormPartial();
+                    
+                    // 3. 焦點回到 ISBN 欄位
+                    document.getElementById('isbn').focus();
+                } else {
+                    alert('❌ 新增失敗，請檢查資料是否完整。');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ 發生錯誤，請稍後再試。');
+            })
+            .finally(() => {
+                // 恢復按鈕
+                btn.innerHTML = originalBtnText;
+                btn.disabled = false;
+            });
+        }
+
+        // 部分清空：保留分類，清空其他
+        function resetFormPartial() {
+            document.getElementById('isbn').value = '';
+            document.getElementById('title').value = '';
+            document.getElementById('author').value = '';
+            document.getElementById('publisher').value = '';
+            document.getElementById('year').value = '';
+            document.getElementById('month').value = '';
+            document.getElementById('description').value = '';
+            document.getElementById('notes').value = '';
+            document.getElementById('cover_url').value = '';
+            document.getElementById('cover_file').value = '';
+            document.getElementById('status').value = '未讀'; // 重置為未讀
+            
+            // 清空其他 UI 狀態
+            document.getElementById('link-container').style.display = 'none';
+            document.getElementById('api-message').textContent = '';
+            document.getElementById('cover-preview').style.display = 'none';
+            document.getElementById('book-cover-img').src = '';
+        }
+
+        // --- 以下為之前的工具函數 (保持不變) ---
+        
+        function updateExternalLinks() {
+            const isbn = document.getElementById('isbn').value.trim();
+            const title = document.getElementById('title').value.trim();
+            const container = document.getElementById('link-container');
+            let keyword = isbn || title;
+
+            if (keyword) {
+                container.style.display = 'block';
+                document.getElementById('link-books').href = `https://search.books.com.tw/search/query/key/${keyword}`;
+                document.getElementById('link-momo').href = `https://m.momoshop.com.tw/search.momo?searchKeyword=${keyword}`;
+                document.getElementById('link-taaze').href = `https://www.taaze.tw/rwd_search_result.html?keyType%5B%5D=0&keyword%5B%5D=${keyword}`;
+                document.getElementById('link-google').href = `https://www.google.com/search?q=${keyword}`;
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function lookupBookData(type) {
+            let query = "";
+            const msg = document.getElementById('api-message');
+            
+            if (type === 'isbn') {
+                const val = document.getElementById('isbn').value.replace(/[- ]/g, '');
+                if (!val) { msg.textContent = "請輸入 ISBN"; msg.style.color = "red"; return; }
+                query = `isbn:${val}`;
+            } else {
+                const val = document.getElementById('title').value.trim();
+                if (!val) { msg.textContent = "請輸入書名"; msg.style.color = "red"; return; }
+                query = `intitle:${val}`;
+            }
+
+            msg.textContent = "🔍 資料搜尋中...";
+            msg.style.color = "blue";
+
+            fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.totalItems > 0) {
+                        const info = data.items[0].volumeInfo;
+                        
+                        if(info.title) document.getElementById('title').value = info.title;
+                        if(info.authors) document.getElementById('author').value = info.authors.join(', ');
+                        if(info.publisher) document.getElementById('publisher').value = info.publisher;
+                        if(info.description) document.getElementById('description').value = info.description;
+                        
+                        if (info.publishedDate) {
+                            const parts = info.publishedDate.split('-');
+                            document.getElementById('year').value = parts[0];
+                            if (parts.length > 1) document.getElementById('month').value = parts[1];
+                        }
+
+                        if (info.imageLinks) {
+                            let imgUrl = info.imageLinks.thumbnail || info.imageLinks.smallThumbnail;
+                            imgUrl = imgUrl.replace('http://', 'https://');
+                            document.getElementById('cover_url').value = imgUrl;
+                            updatePreviewFromUrl();
+                        }
+                        
+                        updateExternalLinks();
+                        msg.textContent = "✅ 成功找到資料！";
+                        msg.style.color = "green";
+                    } else {
+                        msg.textContent = "⚠️ 找不到此書，請試試外部連結。";
+                        msg.style.color = "#d9534f";
+                        updateExternalLinks();
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    msg.textContent = "❌ 查詢錯誤";
+                    msg.style.color = "red";
+                });
+        }
+
         let html5QrCode;
         function startScanner() {
             document.getElementById('reader-container').style.display = 'block';
             html5QrCode = new Html5Qrcode("reader");
             html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (txt) => {
-                document.getElementById('isbn').value = txt; stopScanner(); lookupBookData();
+                document.getElementById('isbn').value = txt; 
+                stopScanner(); 
+                lookupBookData('isbn');
+                updateExternalLinks();
             });
         }
-        function stopScanner() { if(html5QrCode) html5QrCode.stop(); document.getElementById('reader-container').style.display = 'none'; }
+        function stopScanner() { 
+            if(html5QrCode) html5QrCode.stop(); 
+            document.getElementById('reader-container').style.display = 'none'; 
+        }
         
-        function updateCoverPreview() {
-            const url = document.getElementById('cover_url').value;
-            const div = document.getElementById('cover-preview');
-            if(url){ document.getElementById('book-cover-img').src = url; div.style.display='block'; } else { div.style.display='none'; }
+        function handleEnter(e, type) {
+            if(e.key === 'Enter') {
+                e.preventDefault();
+                lookupBookData(type);
+            }
         }
 
-        function lookupBookData() {
-            const isbn = document.getElementById('isbn').value.replace(/-/g,'');
-            const msg = document.getElementById('isbn-message');
-            msg.textContent = "搜尋中...";
-            fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`).then(r=>r.json()).then(data=>{
-                if(data.totalItems>0){
-                    const v = data.items[0].volumeInfo;
-                    document.getElementById('title').value = v.title;
-                    document.getElementById('author').value = v.authors ? v.authors.join(', ') : '';
-                    document.getElementById('publisher').value = v.publisher || '';
-                    if(v.publishedDate) document.getElementById('year').value = v.publishedDate.split('-')[0];
-                    if(v.description) document.getElementById('description').value = v.description;
-                    if(v.imageLinks){
-                        let img = v.imageLinks.thumbnail || v.imageLinks.smallThumbnail;
-                        document.getElementById('cover_url').value = img.replace('http://','https://');
-                        updateCoverPreview();
-                    }
-                    msg.textContent = "搜尋成功！"; msg.style.color="green";
-                } else { msg.textContent = "Google 找不到此書，請嘗試 OpenLibrary 或手動輸入。"; }
-            });
+        function updatePreviewFromUrl() {
+            const url = document.getElementById('cover_url').value;
+            const previewBox = document.getElementById('cover-preview');
+            const img = document.getElementById('book-cover-img');
+            document.getElementById('cover_file').value = "";
+            if (url) { img.src = url; previewBox.style.display = 'block'; } 
+            else { previewBox.style.display = 'none'; }
+        }
+
+        function updatePreviewFromFile(input) {
+            const previewBox = document.getElementById('cover-preview');
+            const img = document.getElementById('book-cover-img');
+            if (input.files && input.files[0]) {
+                document.getElementById('cover_url').value = "";
+                const reader = new FileReader();
+                reader.onload = function(e) { img.src = e.target.result; previewBox.style.display = 'block'; }
+                reader.readAsDataURL(input.files[0]);
+            }
         }
     </script>
 </body>
