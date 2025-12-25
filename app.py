@@ -58,8 +58,8 @@ class Book(db.Model):
 # --- 初始化 ---
 with app.app_context():
     db.create_all()
-    db.drop_all()    # <--- 加入這行！這會刪除舊的表格
-    db.create_all()  # <--- 這行會建立正確的新表格
+    #db.    #db.drop_a# <--- 加入這行！這會刪除舊的表格
+    #db.    #db.create# <--- 這行會建立正確的新表格
     # 如果分類是空的，預先建立
     if not Category.query.first():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '其他']
