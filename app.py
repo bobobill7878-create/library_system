@@ -563,6 +563,28 @@ def lookup_isbn(isbn):
     if google_data: return jsonify(google_data)
 
     return jsonify({"error": "找不到此 ISBN (Render IP 可能被封鎖，請嘗試診斷路由)"}), 404
-
+# ==========================================
+# 🔥 資料庫急救包 (執行一次後請務必刪除或註解)
+# ==========================================
+@app.route('/rebuild_db')
+def rebuild_db():
+    try:
+        # 1. 徹底刪除舊資料庫 (包含所有書籍資料)
+        db.drop_all()
+        
+        # 2. 依照新的程式碼建立新格式的資料庫
+        db.create_all()
+        
+        # 3. 幫你補回預設分類 (不然下拉選單會是空的)
+        if not Category.query.first():
+            default_categories = ['小說', '原文小說', '漫畫', '原文漫畫', '畫冊', '寫真', '設定集']
+            for name in default_categories: 
+                db.session.add(Category(name=name))
+            db.session.commit()
+            
+        return "✅ 資料庫重置成功！欄位已更新。請務必回到 app.py 註解掉此功能的程式碼！<br><a href='/'>回到首頁</a>"
+    except Exception as e:
+        return f"❌ 重置失敗: {str(e)}"
+# ==========================================
 if __name__ == '__main__':
     app.run(debug=True)
