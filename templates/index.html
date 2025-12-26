@@ -35,15 +35,12 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📚 我的圖書館 ({{ books|length }} 本)</h1>
-        </div>
+        <div class="header"><h1>📚 我的圖書館 ({{ books|length }} 本)</h1></div>
         <div class="toolbar">
             <a href="{{ url_for('add_book') }}" class="btn btn-add">➕ 新增書籍</a>
             <a href="{{ url_for('manage_categories') }}" class="btn btn-cat">⚙️ 分類管理</a>
             <a href="{{ url_for('dashboard') }}" class="btn btn-dash">📊 數據儀表板</a>
         </div>
-        
         <form method="GET" action="{{ url_for('index') }}" class="search-box">
             <select name="search_field">
                 <option value="all" {% if current_search_field == 'all' %}selected{% endif %}>全部欄位</option>
@@ -71,29 +68,15 @@
         {% if books %}
         <table>
             <thead>
-                <tr>
-                    <th width="50">封面</th>
-                    <th>書名 / 叢書</th>
-                    <th>作者</th>
-                    <th>分類</th>
-                    <th>狀態</th>
-                    <th>評分</th>
-                    <th>操作</th>
-                </tr>
+                <tr><th width="50">封面</th><th>書名 / 叢書</th><th>作者</th><th>分類</th><th>狀態</th><th>評分</th><th>操作</th></tr>
             </thead>
             <tbody>
                 {% for book in books %}
                 <tr>
                     <td>{% if book.cover_url %}<img src="{{ book.cover_url }}" width="40">{% endif %}</td>
                     <td>
-                        <a href="#" onclick="openModal({{ book.id }}); return false;" style="font-weight: bold; color: #007bff; text-decoration: none; font-size: 1.1em;">
-                            {{ book.title }}
-                        </a>
-                        {% if book.series %}
-                        <div style="font-size: 0.85em; color: #666;">
-                            {{ book.series }} {% if book.volume %}#{{ book.volume }}{% endif %}
-                        </div>
-                        {% endif %}
+                        <a href="#" onclick="openModal({{ book.id }}); return false;" style="font-weight: bold; color: #007bff; text-decoration: none; font-size: 1.1em;">{{ book.title }}</a>
+                        {% if book.series %}<div style="font-size: 0.85em; color: #666;">{{ book.series }} {% if book.volume %}#{{ book.volume }}{% endif %}</div>{% endif %}
                     </td>
                     <td>{{ book.author }}</td>
                     <td>{{ book.category.name if book.category else '' }}</td>
@@ -107,19 +90,14 @@
                     <td>{{ '⭐' * book.rating if book.rating > 0 else '-' }}</td>
                     <td>
                         <a href="{{ url_for('edit_book', book_id=book.id) }}" style="text-decoration: none; margin-right: 5px;">✏️</a>
-                        <form action="{{ url_for('delete_book', book_id=book.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除這本書嗎？');">
-                            <button type="submit" style="border:none; background:none; cursor:pointer; color:red;">❌</button>
-                        </form>
+                        <form action="{{ url_for('delete_book', book_id=book.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除？');"><button type="submit" style="border:none; background:none; cursor:pointer; color:red;">❌</button></form>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="empty-state">
-            <h3>📭 找不到書籍</h3>
-            <p>試著調整搜尋條件，或是新增第一本書吧！</p>
-        </div>
+        <div class="empty-state"><h3>📭 找不到書籍</h3><p>試著調整搜尋條件，或是新增第一本書吧！</p></div>
         {% endif %}
     </div>
 
@@ -127,32 +105,10 @@
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
             <h2 id="mTitle" style="border-bottom: 2px solid #eee; padding-bottom: 10px;"></h2>
-            <div class="detail-flex">
-                <div class="detail-cover"><img id="mCover" src=""></div>
-                <div class="detail-info">
-                    <div class="info-grid">
-                        <span class="label">作者:</span><span id="mAuthor"></span>
-                        <span class="label">出版社:</span><span id="mPublisher"></span>
-                        <span class="label">叢書/集數:</span><span id="mSeries"></span>
-                        <span class="label">狀態/評分:</span><span id="mStatus"></span>
-                        <span class="label">位置:</span><span id="mLocation"></span>
-                        <span class="label">標籤:</span><span id="mTags"></span>
-                        <span class="label">出版日:</span><span id="mDate"></span>
-                        <span class="label">ISBN:</span><span id="mISBN"></span>
-                    </div>
-                </div>
-            </div>
-            <div style="margin-top: 15px;">
-                <span class="label">大綱:</span>
-                <div id="mDesc" style="background:#f9f9f9; padding:10px; border-radius:4px; margin-top:5px; max-height:150px; overflow-y:auto;"></div>
-            </div>
-            <div style="margin-top: 10px;">
-                <span class="label">備註:</span>
-                <div id="mNotes" style="color: #666;"></div>
-            </div>
-            <div style="text-align: right; margin-top: 20px;">
-                <a id="mEditBtn" href="#" class="btn btn-cat">前往編輯</a>
-            </div>
+            <div class="detail-flex"><div class="detail-cover"><img id="mCover" src=""></div><div class="detail-info"><div class="info-grid"><span class="label">作者:</span><span id="mAuthor"></span><span class="label">出版社:</span><span id="mPublisher"></span><span class="label">叢書/集數:</span><span id="mSeries"></span><span class="label">狀態/評分:</span><span id="mStatus"></span><span class="label">位置:</span><span id="mLocation"></span><span class="label">標籤:</span><span id="mTags"></span><span class="label">出版日:</span><span id="mDate"></span><span class="label">ISBN:</span><span id="mISBN"></span></div></div></div>
+            <div style="margin-top: 15px;"><span class="label">大綱:</span><div id="mDesc" style="background:#f9f9f9; padding:10px; border-radius:4px; margin-top:5px; max-height:150px; overflow-y:auto;"></div></div>
+            <div style="margin-top: 10px;"><span class="label">備註:</span><div id="mNotes" style="color: #666;"></div></div>
+            <div style="text-align: right; margin-top: 20px;"><a id="mEditBtn" href="#" class="btn btn-cat">前往編輯</a></div>
         </div>
     </div>
     <script>
