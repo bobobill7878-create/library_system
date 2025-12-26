@@ -2,12 +2,20 @@ import os
 import requests
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.utils import secure_filename
 from datetime import datetime
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-# --- 資料庫設定 ---
+# --- 設定上傳資料夾 ---
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
 if 'RENDER' in os.environ:
     database_url = os.environ.get('DATABASE_URL')
     if database_url and database_url.startswith("postgres://"):
@@ -19,7 +27,7 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- 資料模型 (完整版) ---
+# --- 資料模型 ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
@@ -35,16 +43,16 @@ class Book(db.Model):
     isbn = db.Column(db.String(20))
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'))
     status = db.Column(db.String(20), default='未讀')
-    rating = db.Column(db.Integer)            # 評分
-    series = db.Column(db.String(100))        # 系列名
-    volume = db.Column(db.String(20))         # 集數
-    print_version = db.Column(db.String(20))  # 版本
+    rating = db.Column(db.Integer)
+    series = db.Column(db.String(100))
+    volume = db.Column(db.String(20))
+    print_version = db.Column(db.String(20))
     publish_year = db.Column(db.Integer)
     publish_month = db.Column(db.Integer)
-    location = db.Column(db.String(50))       # 存放位置
-    tags = db.Column(db.String(200))          # 標籤
+    location = db.Column(db.String(50))
+    tags = db.Column(db.String(200))
     description = db.Column(db.Text)
-    notes = db.Column(db.Text)                # 個人筆記
+    notes = db.Column(db.Text)
     cover_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -55,6 +63,9 @@ with app.app_context():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '工具書', '其他']
         for c in cats: db.session.add(Category(name=c))
         db.session.commit()
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- API: ISBN 查詢 ---
 @app.route('/api/lookup_isbn/<isbn>')
@@ -67,7 +78,6 @@ def lookup_isbn(isbn):
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
             item = soup.select_one('.table-search-tbody tr') or soup.select_one('.item')
-            
             if item:
                 data = {}
                 img = item.select_one('img')
@@ -90,11 +100,42 @@ def lookup_isbn(isbn):
                 
                 desc = item.select_one('.box_contents p, .txt_cont')
                 if desc: data['description'] = desc.text.strip()[:300] + "..."
-
                 return jsonify(data)
         return jsonify({'error': 'Not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# --- API: 關鍵字搜尋 (新增，支援前端 searchByTitle) ---
+@app.route('/api/search_keyword/<keyword>')
+def search_keyword(keyword):
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=10"
+        res = requests.get(url)
+        data = res.json()
+        results = []
+        if 'items' in data:
+            for item in data['items']:
+                v = item.get('volumeInfo', {})
+                isbn = ""
+                if 'industryIdentifiers' in v:
+                    for i in v['industryIdentifiers']:
+                        if i['type'] == 'ISBN_13': isbn = i['identifier']
+                
+                img = v.get('imageLinks', {}).get('thumbnail', '')
+                if img: img = img.replace('http:', 'https:')
+
+                results.append({
+                    'title': v.get('title', '無標題'),
+                    'author': ', '.join(v.get('authors', [])),
+                    'publisher': v.get('publisher', ''),
+                    'year': v.get('publishedDate', '')[:4] if v.get('publishedDate') else '',
+                    'cover_url': img,
+                    'description': v.get('description', ''),
+                    'isbn': isbn
+                })
+        return jsonify(results)
+    except Exception as e:
+        return jsonify([])
 
 # --- 頁面路由 ---
 @app.route('/')
@@ -116,28 +157,28 @@ def add_book():
     if request.method == 'POST':
         try:
             # 處理分類
-            cat_name = request.form.get('new_category')
             cat_id = request.form.get('category_id')
-            if cat_name:
-                existing = Category.query.filter_by(name=cat_name).first()
-                if not existing:
-                    new_cat = Category(name=cat_name)
-                    db.session.add(new_cat)
-                    db.session.commit()
-                    cat_id = new_cat.id
-                else:
-                    cat_id = existing.id
+            
+            # 處理圖片上傳
+            cover_url = request.form.get('cover_url')
+            file = request.files.get('cover_file')
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                # 加上時間戳記避免檔名衝突
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                filename = f"{timestamp}_{filename}"
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                cover_url = url_for('static', filename='uploads/' + filename)
 
             y = request.form.get('publish_year')
             m = request.form.get('publish_month')
             
-            # 建立書籍 (完整欄位)
             new_book = Book(
                 title=request.form['title'],
                 author=request.form.get('author'),
                 publisher=request.form.get('publisher'),
                 isbn=request.form.get('isbn'),
-                category_id=cat_id,
+                category_id=cat_id if cat_id else None,
                 status=request.form.get('status', '未讀'),
                 rating=request.form.get('rating'),
                 series=request.form.get('series'),
@@ -149,7 +190,7 @@ def add_book():
                 tags=request.form.get('tags'),
                 description=request.form.get('description'),
                 notes=request.form.get('notes'),
-                cover_url=request.form.get('cover_url')
+                cover_url=cover_url
             )
             db.session.add(new_book)
             db.session.commit()
@@ -160,7 +201,6 @@ def add_book():
     categories = Category.query.all()
     return render_template('add_book.html', categories=categories)
 
-# --- 刪除書籍 (之前不小心拿掉的) ---
 @app.route('/delete_book/<int:id>', methods=['POST'])
 def delete_book(id):
     book = Book.query.get_or_404(id)
@@ -168,7 +208,6 @@ def delete_book(id):
     db.session.commit()
     return redirect(url_for('index'))
 
-# --- 分類管理 ---
 @app.route('/categories', methods=['GET', 'POST'])
 def manage_categories():
     if request.method == 'POST':
@@ -180,14 +219,10 @@ def manage_categories():
 
 @app.route('/categories/delete/<int:id>', methods=['POST'])
 def delete_category(id):
-    try:
-        cat = Category.query.get_or_404(id)
-        if Book.query.filter_by(category_id=id).first():
-             return "無法刪除：還有書籍屬於此分類", 400
+    cat = Category.query.get_or_404(id)
+    if not Book.query.filter_by(category_id=id).first():
         db.session.delete(cat)
         db.session.commit()
-    except Exception as e:
-        print(f"Error: {e}")
     return redirect(url_for('manage_categories'))
 
 if __name__ == '__main__':
