@@ -1,19 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response, send_file
+import threading
+import time
+import requests # 用於自我喚醒
+from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
-import requests
 import datetime
 import os
 import uuid
-import csv
-import io
 import re
 from bs4 import BeautifulSoup
 import pandas as pd
+import io
 import urllib3
 
-# 🔥 引入最強偽裝套件
+# 🔥 引入最強偽裝套件 (用於爬蟲)
 from curl_cffi import requests as crequests
 
 # 忽略 SSL 警告
@@ -87,6 +88,7 @@ def allowed_file(filename):
 
 def safe_get(url):
     try:
+        # 使用 curl_cffi 模擬 Chrome 110
         response = crequests.get(url, impersonate="chrome110", timeout=15)
         return response
     except Exception as e:
@@ -207,7 +209,7 @@ def search_books_com_tw_keyword(keyword):
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
         items = soup.select('.table-search-tbody tr') or soup.select('li.item')
-        for item in items[:8]: # 取前8筆
+        for item in items[:8]:
             try:
                 title_tag = item.select_one('h4 a') or item.select_one('h3 a') or item.select_one('.box_header h3 a')
                 if not title_tag: continue
@@ -292,7 +294,7 @@ def init_db():
         return "初始化完成"
     except Exception as e: return f"失敗: {e}"
 
-# 🔥 首頁 (支援多選篩選)
+# 🔥 首頁 (支援多選篩選、完整欄位搜尋)
 @app.route('/')
 def index():
     try:
@@ -306,7 +308,7 @@ def index():
         books_query = Book.query
 
         if query:
-            # 全欄位模糊搜尋 (包含出版社與ISBN)
+            # 全欄位搜尋
             base_filter = (
                 Book.title.ilike(f'%{query}%') | 
                 Book.author.ilike(f'%{query}%') | 
@@ -316,10 +318,11 @@ def index():
                 Book.tags.ilike(f'%{query}%')
             )
             
+            # 指定欄位搜尋
             if search_field == 'title': search_filter = Book.title.ilike(f'%{query}%')
             elif search_field == 'author': search_filter = Book.author.ilike(f'%{query}%')
-            elif search_field == 'publisher': search_filter = Book.publisher.ilike(f'%{query}%') # 新增
-            elif search_field == 'isbn': search_filter = Book.isbn.ilike(f'%{query}%') # 新增
+            elif search_field == 'publisher': search_filter = Book.publisher.ilike(f'%{query}%')
+            elif search_field == 'isbn': search_filter = Book.isbn.ilike(f'%{query}%')
             elif search_field == 'series': search_filter = Book.series.ilike(f'%{query}%')
             else: search_filter = base_filter
             
@@ -335,6 +338,7 @@ def index():
         if selected_status:
             books_query = books_query.filter(Book.status.in_(selected_status))
         
+        # 排序：入庫日期新->舊，ID新->舊
         all_books = books_query.order_by(Book.added_date.desc(), Book.id.desc()).all()
         all_categories = Category.query.all()
         
@@ -574,6 +578,24 @@ def import_books():
                 return render_template('import_books.html', success_message=f"成功匯入 {success_count} 本書籍")
             except Exception as e: return render_template('import_books.html', error=str(e))
     return render_template('import_books.html')
+
+# ==========================================
+# 🔥 防止 Render 休眠的自我喚醒機制
+# ==========================================
+def keep_alive():
+    # 請將此網址改為您 Render 部署後的實際網址
+    url = "https://library-system-9ti8.onrender.com/" 
+    while True:
+        time.sleep(600)  # 每 10 分鐘 (600秒) 喚醒一次
+        try:
+            print(f"⏰ 自我喚醒: {url}")
+            requests.get(url)
+        except Exception as e:
+            print(f"❌ 喚醒失敗: {e}")
+
+# 在背景啟動防休眠執行緒 (只在 Render 環境執行)
+if os.environ.get('RENDER'):
+    threading.Thread(target=keep_alive, daemon=True).start()
 
 if __name__ == '__main__':
     app.run(debug=True)
