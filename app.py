@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from bs4 import BeautifulSoup
+import re
 
 app = Flask(__name__)
 
@@ -67,7 +68,7 @@ with app.app_context():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- API: ISBN 查詢 ---
+# --- API 路由 (保持不變) ---
 @app.route('/api/lookup_isbn/<isbn>')
 def lookup_isbn(isbn):
     try:
@@ -92,7 +93,6 @@ def lookup_isbn(isbn):
                 pub = item.select_one('a[rel="mid_publish"]')
                 if pub: data['publisher'] = pub.text.strip()
                 
-                import re
                 m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', item.text)
                 if m:
                     data['year'] = m.group(1)
@@ -105,7 +105,6 @@ def lookup_isbn(isbn):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# --- API: 關鍵字搜尋 (新增，支援前端 searchByTitle) ---
 @app.route('/api/search_keyword/<keyword>')
 def search_keyword(keyword):
     try:
@@ -141,30 +140,42 @@ def search_keyword(keyword):
 @app.route('/')
 def index():
     query = Book.query
-    q = request.args.get('q')
+    
+    # 關鍵字搜尋
+    q = request.args.get('q', '')
     if q:
         query = query.filter((Book.title.contains(q)) | (Book.author.contains(q)) | (Book.isbn.contains(q)))
     
-    cat_id = request.args.get('category')
-    if cat_id: query = query.filter(Book.category_id == cat_id)
+    # 分類多選篩選 (注意這裡改成 getlist)
+    selected_cats = request.args.getlist('category')
+    if selected_cats:
+        query = query.filter(Book.category_id.in_(selected_cats))
+
+    # 狀態多選篩選 (注意這裡改成 getlist)
+    selected_status = request.args.getlist('status')
+    if selected_status:
+        query = query.filter(Book.status.in_(selected_status))
 
     books = query.order_by(Book.status.asc(), Book.updated_at.desc()).all()
     categories = Category.query.all()
-    return render_template('index.html', books=books, categories=categories)
+    
+    # 傳遞 selected_cats 與 selected_status 到前端以維持勾選狀態
+    return render_template('index.html', 
+                           books=books, 
+                           categories=categories, 
+                           q=q,
+                           selected_cats=selected_cats,
+                           selected_status=selected_status)
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_book():
     if request.method == 'POST':
         try:
-            # 處理分類
             cat_id = request.form.get('category_id')
-            
-            # 處理圖片上傳
             cover_url = request.form.get('cover_url')
             file = request.files.get('cover_file')
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
-                # 加上時間戳記避免檔名衝突
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 filename = f"{timestamp}_{filename}"
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
@@ -201,7 +212,47 @@ def add_book():
     categories = Category.query.all()
     return render_template('add_book.html', categories=categories)
 
-@app.route('/delete_book/<int:id>', methods=['POST'])
+# --- 新增：編輯書籍路由 ---
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+def edit_book(id):
+    book = Book.query.get_or_404(id)
+    if request.method == 'POST':
+        book.title = request.form['title']
+        book.author = request.form.get('author')
+        book.publisher = request.form.get('publisher')
+        book.isbn = request.form.get('isbn')
+        
+        cat_id = request.form.get('category_id')
+        book.category_id = cat_id if cat_id else None
+        
+        book.status = request.form.get('status')
+        book.rating = request.form.get('rating')
+        book.location = request.form.get('location')
+        book.description = request.form.get('description')
+        book.notes = request.form.get('notes')
+        
+        y = request.form.get('publish_year')
+        if y and y.isdigit(): book.publish_year = int(y)
+        
+        # 處理圖片更新
+        cover_url = request.form.get('cover_url') # 如果是用搜尋填入
+        file = request.files.get('cover_file')    # 如果是手動上傳
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            filename = f"{timestamp}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            book.cover_url = url_for('static', filename='uploads/' + filename)
+        elif cover_url:
+            book.cover_url = cover_url
+
+        db.session.commit()
+        return redirect(url_for('index'))
+    
+    categories = Category.query.all()
+    return render_template('edit_book.html', book=book, categories=categories)
+
+@app.route('/delete_book/<int:id>')
 def delete_book(id):
     book = Book.query.get_or_404(id)
     db.session.delete(book)
