@@ -19,7 +19,7 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- 資料模型 ---
+# --- 資料模型 (完整版) ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
@@ -35,29 +35,28 @@ class Book(db.Model):
     isbn = db.Column(db.String(20))
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'))
     status = db.Column(db.String(20), default='未讀')
-    rating = db.Column(db.Integer)
-    series = db.Column(db.String(100))
-    volume = db.Column(db.String(20))
-    print_version = db.Column(db.String(20))
+    rating = db.Column(db.Integer)            # 評分
+    series = db.Column(db.String(100))        # 系列名
+    volume = db.Column(db.String(20))         # 集數
+    print_version = db.Column(db.String(20))  # 版本
     publish_year = db.Column(db.Integer)
     publish_month = db.Column(db.Integer)
-    location = db.Column(db.String(50))
-    tags = db.Column(db.String(200))
+    location = db.Column(db.String(50))       # 存放位置
+    tags = db.Column(db.String(200))          # 標籤
     description = db.Column(db.Text)
-    notes = db.Column(db.Text)
+    notes = db.Column(db.Text)                # 個人筆記
     cover_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 with app.app_context():
     db.create_all()
-    # 初始化預設分類
     if not Category.query.first():
         cats = ['漫畫', '輕小說', '文學小說', '商業理財', '心理勵志', '人文社科', '工具書', '其他']
         for c in cats: db.session.add(Category(name=c))
         db.session.commit()
 
-# --- API: ISBN 查詢 (供前端使用) ---
+# --- API: ISBN 查詢 ---
 @app.route('/api/lookup_isbn/<isbn>')
 def lookup_isbn(isbn):
     try:
@@ -93,13 +92,11 @@ def lookup_isbn(isbn):
                 if desc: data['description'] = desc.text.strip()[:300] + "..."
 
                 return jsonify(data)
-                
         return jsonify({'error': 'Not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # --- 頁面路由 ---
-
 @app.route('/')
 def index():
     query = Book.query
@@ -118,10 +115,9 @@ def index():
 def add_book():
     if request.method == 'POST':
         try:
+            # 處理分類
             cat_name = request.form.get('new_category')
             cat_id = request.form.get('category_id')
-            
-            # 如果輸入了新分類，先建立它
             if cat_name:
                 existing = Category.query.filter_by(name=cat_name).first()
                 if not existing:
@@ -135,6 +131,7 @@ def add_book():
             y = request.form.get('publish_year')
             m = request.form.get('publish_month')
             
+            # 建立書籍 (完整欄位)
             new_book = Book(
                 title=request.form['title'],
                 author=request.form.get('author'),
@@ -163,30 +160,28 @@ def add_book():
     categories = Category.query.all()
     return render_template('add_book.html', categories=categories)
 
-# --- 這裡就是修復您報錯的關鍵 ---
+# --- 刪除書籍 (之前不小心拿掉的) ---
+@app.route('/delete_book/<int:id>', methods=['POST'])
+def delete_book(id):
+    book = Book.query.get_or_404(id)
+    db.session.delete(book)
+    db.session.commit()
+    return redirect(url_for('index'))
+
+# --- 分類管理 ---
 @app.route('/categories', methods=['GET', 'POST'])
 def manage_categories():
-    # 函式名稱 manage_categories 對應到 index.html 的 url_for('manage_categories')
     if request.method == 'POST':
-        try:
-            name = request.form.get('name')
-            if name:
-                existing = Category.query.filter_by(name=name).first()
-                if not existing:
-                    db.session.add(Category(name=name))
-                    db.session.commit()
-        except Exception as e:
-            print(f"Error: {e}")
-            
-    categories = Category.query.all()
-    # 這裡指定渲染 categories.html
-    return render_template('categories.html', categories=categories)
+        name = request.form.get('name')
+        if name and not Category.query.filter_by(name=name).first():
+            db.session.add(Category(name=name))
+            db.session.commit()
+    return render_template('categories.html', categories=Category.query.all())
 
 @app.route('/categories/delete/<int:id>', methods=['POST'])
 def delete_category(id):
     try:
         cat = Category.query.get_or_404(id)
-        # 簡單保護：有書就不給刪
         if Book.query.filter_by(category_id=id).first():
              return "無法刪除：還有書籍屬於此分類", 400
         db.session.delete(cat)
