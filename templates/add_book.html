@@ -7,29 +7,38 @@
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f9f9f9; }
-        form { max-width: 650px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); background-color: #fff; }
+        form { max-width: 700px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); background-color: #fff; }
         
         .isbn-group, .title-group { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
         .isbn-group input, .title-group input { flex-grow: 1; padding: 10px; border: 2px solid #eee; border-radius: 6px; font-size: 16px; }
-        input[type="text"], input[type="number"], select, textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        
+        /* 統一輸入框樣式 */
+        input[type="text"], input[type="number"], select, textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        
+        /* 雙欄排版 */
         .row { display: flex; gap: 15px; } .row > div { flex: 1; }
         
-        .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; margin: 0 auto; }
+        /* 封面預覽 */
+        .cover-preview { margin-top: 10px; display: none; max-width: 150px; border: 1px solid #ddd; padding: 5px; border-radius: 6px; margin-left: auto; margin-right: auto; }
         .cover-preview img { width: 100%; display: block; }
-        .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; }
         
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-weight: 600; color: white; white-space: nowrap; }
+        /* 按鈕與訊息 */
+        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; color: white; white-space: nowrap; font-weight: bold;}
         .btn-scan { background-color: #17a2b8; }
         .btn-search { background-color: #007bff; }
-        .btn-submit { background-color: #28a745; width: 100%; font-size: 18px; margin-top: 10px; }
+        .btn-submit { background-color: #28a745; width: 100%; font-size: 18px; margin-top: 20px; }
         .btn-secondary { background-color: #6c757d; text-decoration: none; display:inline-block; margin-bottom: 20px;}
-        
+        .message-box { color: #dc3545; margin: 10px 0; font-weight: 500; min-height: 20px; }
+
+        /* 掃描器 */
         #reader-container { display: none; margin-bottom: 20px; text-align: center; border: 2px dashed #007bff; padding: 15px; background: #f0f8ff; border-radius: 8px; }
         #reader { width: 100%; max-width: 500px; margin: 0 auto; }
 
+        /* 救援按鈕 */
         .manual-help-btns { display: none; margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 6px; }
         .help-btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 5px; }
         .btn-help { background-color: #6c757d; color: white; text-decoration: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; }
+        .btn-help:hover { opacity: 0.9; }
 
         /* Modal */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow: auto; }
@@ -42,7 +51,7 @@
 <body>
 
     <a href="/" class="btn btn-secondary">← 回首頁</a>
-    <h1>新增圖書資料</h1>
+    <h1>新增圖書資料 (完整版)</h1>
 
     <div id="reader-container">
         <div id="reader"></div>
@@ -61,8 +70,8 @@
         <div id="manual-help" class="manual-help-btns">
             <p>⚠️ 查無資料，請嘗試手動查詢：</p>
             <div class="help-btn-group">
-                <a href="#" target="_blank" id="link-momo" class="btn-help">MOMO</a>
-                <a href="#" target="_blank" id="link-books" class="btn-help">博客來</a>
+                <a href="#" target="_blank" id="link-momo" class="btn-help" style="background-color: #d63384;">MOMO</a>
+                <a href="#" target="_blank" id="link-books" class="btn-help" style="background-color: #0d6efd;">博客來</a>
                 <a href="#" target="_blank" id="link-google" class="btn-help">Google</a>
             </div>
         </div>
@@ -84,11 +93,20 @@
             <div><label>作者:</label><input type="text" id="author" name="author"></div>
             <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
         </div>
+
         <div class="row">
-            <div><label>年份:</label><input type="number" id="year" name="publish_year"></div>
-            <div><label>月份:</label><input type="number" id="month" name="publish_month"></div>
+            <div style="flex: 2;">
+                <label>系列名稱:</label>
+                <input type="text" name="series" placeholder="例如：海賊王">
+            </div>
+            <div style="flex: 1;">
+                <label>集數:</label>
+                <input type="text" name="volume" placeholder="Vol. 1">
+            </div>
         </div>
+
         <div class="row">
+            <div><label>出版年份:</label><input type="number" id="year" name="publish_year" placeholder="YYYY"></div>
             <div>
                 <label>分類:</label>
                 <select name="category_id">
@@ -96,21 +114,45 @@
                     <option value="{{ cat.id }}">{{ cat.name }}</option>
                     {% endfor %}
                 </select>
-                <input type="text" name="new_category" placeholder="或新增分類..." style="margin-top:5px; font-size:0.9em;">
+                <input type="text" name="new_category" placeholder="或新增分類..." style="margin-top:5px; font-size:0.9em; padding:5px;">
             </div>
+        </div>
+        
+        <div class="row">
             <div>
-                <label>狀態:</label>
+                <label>閱讀狀態:</label>
                 <select name="status">
                     <option value="未讀">🔴 未讀</option>
                     <option value="閱讀中">🟡 閱讀中</option>
                     <option value="已讀">🟢 已讀</option>
+                    <option value="棄書">⚫ 棄書</option>
+                </select>
+            </div>
+            <div>
+                <label>個人評分:</label>
+                <select name="rating">
+                    <option value="">未評分</option>
+                    <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                    <option value="4">⭐⭐⭐⭐ (4)</option>
+                    <option value="3">⭐⭐⭐ (3)</option>
+                    <option value="2">⭐⭐ (2)</option>
+                    <option value="1">⭐ (1)</option>
                 </select>
             </div>
         </div>
-        
-        <label>簡介:</label>
+
+        <div class="row">
+            <div><label>標籤 (Tags):</label><input type="text" name="tags" placeholder="用逗號分隔，如：科幻, 經典"></div>
+            <div><label>存放位置:</label><input type="text" name="location" placeholder="例如：書櫃A-第2層"></div>
+        </div>
+
+        <label>內容簡介:</label>
         <textarea id="description_input" name="description" rows="3"></textarea>
-        <button type="submit" class="btn btn-submit">💾 儲存</button>
+
+        <label>個人筆記:</label>
+        <textarea name="notes" rows="2" placeholder="讀後感或借閱紀錄..."></textarea>
+
+        <button type="submit" class="btn btn-submit">💾 儲存書籍資料</button>
     </form>
 
     <div id="titleSearchModal" class="modal">
@@ -122,6 +164,7 @@
     </div>
 
     <script>
+        // 維持原有的強大搜尋邏輯 (API + Google)
         function lookupBookData() {
             const isbn = document.getElementById('isbn').value.trim().replace(/-/g, '');
             if (!isbn) return;
@@ -129,22 +172,20 @@
             const msg = document.getElementById('isbn-message');
             msg.textContent = '查詢中...';
             
-            // 設定救援連結
+            // 更新連結
             document.getElementById('link-momo').href = `https://m.momoshop.com.tw/search.momo?searchKeyword=${isbn}`;
             document.getElementById('link-books').href = `https://search.books.com.tw/search/query/key/${isbn}/cat/all`;
             document.getElementById('link-google').href = `https://www.google.com/search?q=${isbn}`;
 
-            // 1. 優先查後端 (爬蟲)
+            // 1. 後端 (爬蟲)
             fetch(`/api/lookup_isbn/${isbn}`)
                 .then(r => r.json().then(data => ({status: r.status, body: data})))
                 .then(res => {
                     if (res.status === 200 && !res.body.error) {
                         fillData(res.body);
-                        msg.textContent = '✅ 查詢成功';
-                        msg.style.color = 'green';
+                        msg.textContent = '✅ 查詢成功'; msg.style.color = 'green';
                         document.getElementById('manual-help').style.display = 'none';
                     } else {
-                        // 2. 失敗查 Google
                         msg.textContent = '伺服器無資料，嘗試 Google...';
                         searchGoogleISBN(isbn);
                     }
