@@ -1,9 +1,9 @@
 Flask
 Flask-SQLAlchemy
-psycopg2-binary
-gunicorn
-requests
-pandas
-openpyxl
 requests
 beautifulsoup4
+curl-cffi
+pandas
+openpyxl
+gunicorn
+psycopg2-binary
