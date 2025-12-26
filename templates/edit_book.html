@@ -5,76 +5,153 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>編輯書籍</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; display: flex; justify-content: center; }
-        form { background: white; padding: 30px; border-radius: 10px; max-width: 600px; width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { margin-top: 0; }
-        label { display: block; margin-top: 15px; font-weight: bold; }
-        input, select, textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        .btn-group { margin-top: 25px; display: flex; gap: 10px; }
-        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
-        .save { background-color: #28a745; flex: 2; }
-        .cancel { background-color: #6c757d; text-decoration: none; display: flex; align-items: center; justify-content: center; flex: 1; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; display: flex; justify-content: center; }
+        .container { background: white; padding: 40px; border-radius: 12px; max-width: 800px; width: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        
+        h1 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; color: #333; }
+        
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .full-width { grid-column: 1 / -1; }
+        
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #555; font-size: 0.9em; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; transition: border-color 0.2s; }
+        input:focus, select:focus, textarea:focus { border-color: #007bff; outline: none; }
+        
+        .cover-preview { margin-top: 10px; text-align: center; background: #fafafa; padding: 10px; border-radius: 6px; border: 1px dashed #ddd; }
+        .cover-preview img { max-height: 150px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+        .btn-group { margin-top: 30px; display: flex; gap: 15px; }
+        .btn { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; color: white; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-save { background-color: #28a745; }
+        .btn-cancel { background-color: #6c757d; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center;}
     </style>
 </head>
 <body>
-    <form method="POST" enctype="multipart/form-data">
-        <h1>✏️ 編輯書籍</h1>
+    <div class="container">
+        <h1>✏️ 編輯書籍資訊</h1>
         
-        <label>書名:</label>
-        <input type="text" name="title" value="{{ book.title }}" required>
-        
-        <div style="display:flex; gap:15px;">
-            <div style="flex:1;"><label>作者:</label><input type="text" name="author" value="{{ book.author }}" required></div>
-            <div style="flex:1;"><label>出版社:</label><input type="text" name="publisher" value="{{ book.publisher or '' }}"></div>
-        </div>
+        <form method="POST" enctype="multipart/form-data" class="grid-container">
+            
+            <div class="full-width">
+                <label>書名:</label>
+                <input type="text" name="title" value="{{ book.title }}" required style="font-size: 1.1em; font-weight: bold;">
+            </div>
 
-        <div style="display:flex; gap:15px;">
-            <div style="flex:1;">
+            <div class="full-width">
+                <label>作者:</label>
+                <input type="text" name="author" value="{{ book.author }}" required>
+            </div>
+
+            <div>
+                <label>出版社:</label>
+                <input type="text" name="publisher" value="{{ book.publisher or '' }}">
+            </div>
+            
+            <div>
+                <label>ISBN:</label>
+                <input type="text" name="isbn" value="{{ book.isbn or '' }}">
+            </div>
+
+            <div>
                 <label>分類:</label>
                 <select name="category">
+                    <option value="">未分類</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}" {% if book.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div style="flex:1;">
+
+            <div>
                 <label>狀態:</label>
                 <select name="status">
-                    {% for s in ['未讀', '閱讀中', '已讀完', '棄坑'] %}
+                    {% for s in ['未讀','閱讀中','已讀完','棄坑'] %}
                     <option value="{{ s }}" {% if book.status == s %}selected{% endif %}>{{ s }}</option>
                     {% endfor %}
                 </select>
             </div>
-        </div>
 
-        <label>書籍版本:</label>
-        <select name="print_version">
-            <option value="">--請選擇--</option>
-            <option value="豪華首刷" {% if book.print_version == '豪華首刷' %}selected{% endif %}>✨ 豪華首刷</option>
-            <option value="首刷" {% if book.print_version == '首刷' %}selected{% endif %}>🔹 首刷</option>
-            <option value="再版" {% if book.print_version == '再版' %}selected{% endif %}>📖 再版</option>
-        </select>
+            <div>
+                <label>叢書系列:</label>
+                <input type="text" name="series" value="{{ book.series or '' }}">
+            </div>
+            
+            <div>
+                <label>集數:</label>
+                <input type="text" name="volume" value="{{ book.volume or '' }}">
+            </div>
 
-        <label>評分 (0-5):</label>
-        <input type="number" name="rating" min="0" max="5" value="{{ book.rating }}">
+            <div>
+                <label>出版年:</label>
+                <input type="number" name="year" value="{{ book.year or '' }}">
+            </div>
+            
+            <div>
+                <label>出版月:</label>
+                <input type="number" name="month" value="{{ book.month or '' }}">
+            </div>
 
-        <label>位置/書櫃:</label>
-        <input type="text" name="location" value="{{ book.location or '' }}">
+            <div>
+                <label>版本:</label>
+                <input type="text" name="print_version" value="{{ book.print_version or '' }}" placeholder="例如: 首刷">
+            </div>
 
-        <label>簡介:</label>
-        <textarea name="description" rows="4">{{ book.description or '' }}</textarea>
+            <div>
+                <label>評分 (0-5):</label>
+                <input type="number" name="rating" min="0" max="5" value="{{ book.rating }}">
+            </div>
 
-        <label>備註 / 筆記:</label>
-        <textarea name="notes" rows="3">{{ book.notes or '' }}</textarea>
-        
-        <label>封面 (若不修改請留空):</label>
-        <input type="text" name="cover_url" placeholder="圖片網址" value="{{ book.cover_url if book.cover_url and 'data:' not in book.cover_url else '' }}">
-        <input type="file" name="cover_file" accept="image/*" style="margin-top:5px;">
+            <div class="full-width">
+                <label>位置 / 標籤:</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" name="location" value="{{ book.location or '' }}" placeholder="位置">
+                    <input type="text" name="tags" value="{{ book.tags or '' }}" placeholder="標籤 (逗號分隔)">
+                </div>
+            </div>
 
-        <div class="btn-group">
-            <button type="submit" class="btn save">💾 儲存修改</button>
-            <a href="/" class="btn cancel">取消</a>
-        </div>
-    </form>
+            <div class="full-width">
+                <label>簡介:</label>
+                <textarea name="description" rows="5">{{ book.description or '' }}</textarea>
+            </div>
+
+            <div class="full-width">
+                <label>私人備註:</label>
+                <textarea name="notes" rows="3">{{ book.notes or '' }}</textarea>
+            </div>
+
+            <div class="full-width">
+                <label>封面圖片網址:</label>
+                <input type="text" name="cover_url" id="cover_url" value="{{ book.cover_url or '' }}" oninput="updatePreview()">
+                <div class="cover-preview" id="preview-box" {% if not book.cover_url %}style="display:none;"{% endif %}>
+                    <img id="preview-img" src="{{ book.cover_url or '' }}">
+                </div>
+            </div>
+
+            <div class="full-width">
+                <label>或上傳新封面:</label>
+                <input type="file" name="cover_file">
+            </div>
+
+            <div class="full-width btn-group">
+                <a href="/" class="btn btn-cancel">取消</a>
+                <button type="submit" class="btn btn-save">💾 儲存變更</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function updatePreview() {
+            const url = document.getElementById('cover_url').value;
+            const box = document.getElementById('preview-box');
+            const img = document.getElementById('preview-img');
+            if(url) {
+                img.src = url;
+                box.style.display = 'block';
+            } else {
+                box.style.display = 'none';
+            }
+        }
+    </script>
 </body>
 </html>
