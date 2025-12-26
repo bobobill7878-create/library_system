@@ -7,7 +7,7 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .btn { padding: 8px 15px; border-radius: 5px; text-decoration: none; color: white; font-weight: bold; margin-left: 5px; }
+        .btn { padding: 8px 15px; border-radius: 5px; text-decoration: none; color: white; font-weight: bold; margin-left: 5px; cursor: pointer;}
         .btn-add { background-color: #28a745; }
         .btn-cat { background-color: #6f42c1; }
         
@@ -15,14 +15,30 @@
         input[type="text"], select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         
         .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .book-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 15px; }
-        .book-cover { width: 80px; height: 110px; object-fit: cover; background: #eee; border-radius: 4px; }
+        .book-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 15px; position: relative; }
+        .book-cover { width: 90px; height: 130px; object-fit: cover; background: #eee; border-radius: 4px; border:1px solid #ddd;}
+        
+        .book-info { flex: 1; }
         .book-info h3 { margin: 0 0 5px 0; font-size: 1.1em; color: #333; }
         .book-info p { margin: 3px 0; color: #666; font-size: 0.9em; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: white; background: #999; }
+        
+        /* 標籤與狀態 */
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: white; background: #999; margin-top: 5px; }
         .status-未讀 { background: #dc3545; }
         .status-閱讀中 { background: #ffc107; color: #333; }
         .status-已讀 { background: #28a745; }
+        .status-棄書 { background: #6c757d; }
+        
+        .rating-stars { color: #ffc107; font-size: 14px; }
+        
+        /* 刪除按鈕 */
+        .btn-delete-icon {
+            position: absolute; bottom: 10px; right: 10px;
+            background: none; border: none; color: #dc3545; font-size: 18px; cursor: pointer; opacity: 0.6;
+        }
+        .btn-delete-icon:hover { opacity: 1; transform: scale(1.1); }
+
+        .meta-info { font-size: 0.85em; color: #888; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -36,30 +52,48 @@
 
     <div class="search-bar">
         <form method="GET" action="/">
-            <input type="text" name="q" placeholder="搜尋書名、作者..." value="{{ request.args.get('q', '') }}">
+            <input type="text" name="q" placeholder="搜尋書名、作者、ISBN..." value="{{ request.args.get('q', '') }}" style="width: 250px;">
             <select name="category" onchange="this.form.submit()">
                 <option value="">所有分類</option>
                 {% for cat in categories %}
                 <option value="{{ cat.id }}" {% if request.args.get('category')|int == cat.id %}selected{% endif %}>{{ cat.name }}</option>
                 {% endfor %}
             </select>
-            <button type="submit" class="btn" style="background:#007bff; border:none; cursor:pointer;">搜尋</button>
+            <button type="submit" class="btn" style="background:#007bff; border:none;">搜尋</button>
         </form>
     </div>
 
     <div class="book-grid">
         {% for book in books %}
         <div class="book-card">
-            <img src="{{ book.cover_url or 'https://via.placeholder.com/80x110?text=No+Cover' }}" class="book-cover">
+            <img src="{{ book.cover_url or 'https://via.placeholder.com/90x130?text=No+Image' }}" class="book-cover">
             <div class="book-info">
                 <h3>{{ book.title }}</h3>
-                <p>作者: {{ book.author }}</p>
+                <p>作者: {{ book.author or '未知' }}</p>
+                
+                {% if book.series %}
+                <p class="meta-info">系列: {{ book.series }} {{ book.volume or '' }}</p>
+                {% endif %}
+
                 <p>分類: {{ book.category_ref.name if book.category_ref else '無' }}</p>
-                <span class="status-badge status-{{ book.status }}">{{ book.status }}</span>
+                
+                <div style="margin-top: 5px;">
+                    <span class="status-badge status-{{ book.status }}">{{ book.status }}</span>
+                    {% if book.rating %}
+                    <span class="rating-stars">{{ '⭐' * book.rating }}</span>
+                    {% endif %}
+                </div>
+
+                <form action="{{ url_for('delete_book', id=book.id) }}" method="POST" onsubmit="return confirm('確定要刪除這本書嗎？');">
+                    <button type="submit" class="btn-delete-icon" title="刪除書籍">🗑️</button>
+                </form>
             </div>
         </div>
         {% else %}
-        <p style="text-align:center; width:100%; color:#666;">目前沒有書籍，快去新增一本吧！</p>
+        <div style="grid-column: 1/-1; text-align:center; padding: 40px; color:#666;">
+            <h3>目前沒有書籍</h3>
+            <p>點擊右上角的「新增書籍」開始建立您的圖書館吧！</p>
+        </div>
         {% endfor %}
     </div>
 </body>
