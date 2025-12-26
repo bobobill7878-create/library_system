@@ -71,17 +71,18 @@ class Book(db.Model):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ==========================================
-# 🔥 爬蟲工具區 (curl_cffi)
-# ==========================================
-
 def safe_get(url):
     try:
+        # 模擬 Chrome 110 指紋
         response = crequests.get(url, impersonate="chrome110", timeout=15)
         return response
     except Exception as e:
         print(f"Request Error: {e}")
         return None
+
+# ==========================================
+# 🔥 爬蟲工具區 (ISBN 精準查詢)
+# ==========================================
 
 # 1. MOMO
 def scrape_momo(isbn):
@@ -141,7 +142,7 @@ def scrape_sanmin(isbn):
         return {"success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": "(來源:三民書局)"}
     except: return None
 
-# 3. 博客來
+# 3. 博客來 (ISBN)
 def scrape_books_com_tw(isbn):
     url = f"https://search.books.com.tw/search/query/key/{isbn}/cat/all"
     try:
@@ -166,7 +167,7 @@ def scrape_books_com_tw(isbn):
         return {"success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": cover, "description": ""}
     except: return None
 
-# 4. Google Books
+# 4. Google Books (ISBN)
 def scrape_google(isbn):
     try:
         res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}", timeout=5)
@@ -185,6 +186,96 @@ def scrape_google(isbn):
     return None
 
 # ==========================================
+# 🔥 混合關鍵字搜尋功能 (博客來 + Google)
+# ==========================================
+
+def search_books_com_tw_keyword(keyword):
+    """ 爬取博客來關鍵字搜尋結果 """
+    url = f"https://search.books.com.tw/search/query/key/{keyword}/cat/all"
+    try:
+        res = safe_get(url)
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        results = []
+        # 兼容新舊版博客來 HTML 結構
+        items = soup.select('.table-search-tbody tr') or soup.select('li.item')
+        
+        for item in items[:8]: # 取前8筆
+            try:
+                title_tag = item.select_one('h4 a') or item.select_one('h3 a') or item.select_one('.box_header h3 a')
+                if not title_tag: continue
+                title = title_tag.get('title') or title_tag.text.strip()
+                
+                # 圖片
+                img_tag = item.select_one('img')
+                cover = img_tag.get('data-src') or img_tag.get('src') or ""
+                if cover and not cover.startswith('http'): cover = 'https:' + cover
+                
+                # 作者/出版社
+                author = "未知"
+                publisher = ""
+                
+                a_auth = item.select_one('a[rel="go_author"]')
+                if a_auth: author = a_auth.text.strip()
+                
+                a_pub = item.select_one('a[rel="go_publisher"]')
+                if a_pub: publisher = a_pub.text.strip()
+                
+                if author == "未知":
+                    text = item.get_text()
+                    if '作者：' in text: author = text.split('作者：')[1].split('出版社：')[0].strip()
+
+                results.append({
+                    "source": "博客來",
+                    "title": title,
+                    "author": author,
+                    "publisher": publisher,
+                    "cover_url": cover,
+                    "year": "", # 列表頁較難抓
+                    "isbn": "", # 列表頁通常無 ISBN
+                    "description": ""
+                })
+            except: continue
+        return results
+    except: return []
+
+def search_google_keyword(keyword):
+    """ Google Books 關鍵字搜尋 """
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=8&printType=books"
+        res = requests.get(url, timeout=5)
+        results = []
+        if res.status_code == 200:
+            data = res.json()
+            for item in data.get('items', []):
+                v = item.get('volumeInfo', {})
+                isbn = ""
+                for ident in v.get('industryIdentifiers', []):
+                    if ident['type'] == 'ISBN_13': isbn = ident['identifier']
+                
+                img = v.get('imageLinks', {})
+                cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
+                if cover.startswith("http://"): cover = cover.replace("http://", "https://")
+
+                pd = v.get('publishedDate', '')
+                year = pd.split('-')[0] if pd else ""
+
+                results.append({
+                    "source": "Google",
+                    "title": v.get('title'),
+                    "author": ", ".join(v.get('authors', [])),
+                    "publisher": v.get('publisher', ''),
+                    "cover_url": cover,
+                    "year": year,
+                    "isbn": isbn,
+                    "description": v.get('description', '')
+                })
+        return results
+    except: return []
+
+# ==========================================
+# 路由設定
+# ==========================================
 
 @app.route('/init_db')
 def init_db():
@@ -196,7 +287,7 @@ def init_db():
         return "初始化完成"
     except Exception as e: return f"失敗: {e}"
 
-# ====== 🔥 資料庫救援指令 (若資料庫錯誤，取消註解執行一次，然後再註解回去) ======
+# 🔥 資料庫救援指令 (若資料庫欄位錯誤，取消註解執行一次，修好後再註解回去)
 # @app.route('/rebuild_db')
 # def rebuild_db():
 #     try:
@@ -231,7 +322,7 @@ def index():
         all_books = books_query.order_by(Book.series.desc(), Book.volume.asc(), Book.id.desc()).all()
         all_categories = Category.query.all()
         return render_template('index.html', books=all_books, categories=all_categories, current_query=query, current_category_id=category_id, current_search_field=search_field, current_status=status_filter)
-    except Exception as e: return f"資料庫錯誤: {e} <a href='/rebuild_db'>嘗試重置</a>"
+    except Exception as e: return f"資料庫錯誤 (可能需要執行 /rebuild_db): {e}"
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_book():
@@ -329,7 +420,7 @@ def delete_book(book_id):
 @app.route('/categories', methods=['GET', 'POST'])
 def manage_categories():
     if request.method == 'POST':
-        name = request.form.get('name') # 修正為 name
+        name = request.form.get('name')
         if name:
             name = name.strip()
             if not Category.query.filter_by(name=name).first():
@@ -359,20 +450,24 @@ def get_book_data(book_id):
         'cover_url': book.cover_url, 'series': book.series or '', 'volume': book.volume or '', 'tags': book.tags or ''
     })
 
+# 🔥 混合搜尋 API (add_book 用)
+@app.route('/api/search_keyword/<keyword>', methods=['GET'])
+def search_keyword(keyword):
+    if not keyword: return jsonify([]), 400
+    # 博客來 + Google 混合
+    books_results = search_books_com_tw_keyword(keyword)
+    google_results = search_google_keyword(keyword)
+    return jsonify(books_results + google_results)
+
 @app.route('/api/lookup_isbn/<isbn>', methods=['GET'])
 def lookup_isbn(isbn):
     if not isbn: return jsonify({"error": "Empty ISBN"}), 400
     clean_isbn = isbn.replace('-', '').strip()
-    
-    res = scrape_momo(clean_isbn)
-    if res: return jsonify(res)
-    res = scrape_sanmin(clean_isbn)
-    if res: return jsonify(res)
-    res = scrape_books_com_tw(clean_isbn)
-    if res: return jsonify(res)
-    res = scrape_google(clean_isbn)
-    if res: return jsonify(res)
-    
+    # 優先順序: MOMO > 三民 > 博客來 > Google
+    if res := scrape_momo(clean_isbn): return jsonify(res)
+    if res := scrape_sanmin(clean_isbn): return jsonify(res)
+    if res := scrape_books_com_tw(clean_isbn): return jsonify(res)
+    if res := scrape_google(clean_isbn): return jsonify(res)
     return jsonify({"error": "Not Found"}), 404
 
 @app.route('/dashboard')
@@ -385,9 +480,52 @@ def dashboard():
 
 @app.route('/import', methods=['GET', 'POST'])
 def import_books():
-    # ... (保持原有的匯入邏輯，請使用您上一個版本或保留原樣) ...
-    # 為節省篇幅，此處邏輯通常不變，若需完整版請告知
-    return render_template('import_books.html') # 簡單回傳避免報錯
+    if request.method == 'POST':
+        if 'file' not in request.files: return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '': return redirect(request.url)
+        if file:
+            try:
+                if file.filename.endswith('.csv'):
+                    try: df = pd.read_csv(file, encoding='utf-8-sig')
+                    except: file.seek(0); df = pd.read_csv(file, encoding='big5')
+                elif file.filename.endswith(('.xls', '.xlsx')):
+                    df = pd.read_excel(file)
+                else: return render_template('import_books.html', error="格式不支援")
+
+                df.columns = [c.strip() for c in df.columns]
+                for index, row in df.iterrows():
+                    title = str(row.get('書名', '')).strip()
+                    if not title or title == 'nan': continue
+                    
+                    cat_name = str(row.get('分類', '')).strip()
+                    cat_id = None
+                    if cat_name and cat_name != 'nan':
+                        cat = Category.query.filter_by(name=cat_name).first()
+                        if not cat:
+                            cat = Category(name=cat_name)
+                            db.session.add(cat); db.session.flush()
+                        cat_id = cat.id
+
+                    def gstr(v): return str(v).strip() if str(v)!='nan' else ''
+                    def gint(v): 
+                        try: return int(float(v))
+                        except: return None
+                        
+                    new_book = Book(
+                        title=title, author=str(row.get('作者', '')),
+                        publisher=gstr(row.get('出版社')), isbn=gstr(row.get('ISBN')),
+                        year=gint(row.get('出版年')), month=gint(row.get('出版月')),
+                        category_id=cat_id, status=gstr(row.get('狀態')) or '未讀',
+                        rating=gint(row.get('評分')) or 0, description=gstr(row.get('大綱')),
+                        series=gstr(row.get('叢書')), volume=gstr(row.get('集數')),
+                        location=gstr(row.get('位置')), tags=gstr(row.get('標籤'))
+                    )
+                    db.session.add(new_book)
+                db.session.commit()
+                return render_template('import_books.html', success_message="匯入成功")
+            except Exception as e: return render_template('import_books.html', error=str(e))
+    return render_template('import_books.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
