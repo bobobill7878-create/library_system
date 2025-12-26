@@ -12,34 +12,37 @@
         .upload-area:hover { background-color: #e6f2ff; border-color: #0056b3; }
         input[type=file] { display: none; }
         .file-label { cursor: pointer; display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; border-radius: 5px; font-weight: bold; }
-        .btn-submit { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { background-color: #218838; }
-        .message-box { padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .template-info { background: #eee; padding: 15px; border-radius: 5px; font-size: 0.9em; color: #555; line-height: 1.6; }
+        .btn-submit { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        .message-box { padding: 15px; border-radius: 5px; margin-bottom: 20px; text-align: center; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .template-info { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #17a2b8; font-size: 0.9em; line-height: 1.6; }
+        code { background: #eee; padding: 2px 4px; border-radius: 3px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📥 批次匯入書籍</h1>
+        <h1>📥 匯入書籍 (Excel)</h1>
         {% if success_message %}<div class="message-box success">{{ success_message }}</div>{% endif %}
         {% if error %}<div class="message-box error">{{ error }}</div>{% endif %}
+        
         <form method="POST" enctype="multipart/form-data">
             <div class="upload-area">
-                <p>請上傳 Excel (.xlsx) 或 CSV 檔案</p>
+                <p>請上傳 Excel (.xlsx) 檔案</p>
                 <label for="file" class="file-label">📂 選擇檔案</label>
-                <input type="file" id="file" name="file" accept=".csv, .xlsx, .xls" onchange="showFileName()">
+                <input type="file" id="file" name="file" accept=".xlsx, .xls" onchange="showFileName()">
                 <p id="file-name" style="margin-top: 10px; color: #666; font-size: 14px;"></p>
             </div>
             <button type="submit" class="btn-submit">開始匯入</button>
         </form>
         <br>
         <div class="template-info">
-            <strong>💡 匯入格式說明：</strong><br>
-            請使用「匯出 Excel」的檔案作為範本。<br>
-            系統會自動辨識以下欄位標題：<br>
-            <code>書名</code>, <code>作者</code>, <code>出版社</code>, <code>ISBN</code>, <code>分類</code>, <code>叢書</code>, <code>集數</code>, <code>出版年</code>, <code>狀態</code>, <code>評分</code>, <code>位置</code>, <code>標籤</code>
+            <strong>💡 匯入說明：</strong><br>
+            1. 建議先使用「匯出 Excel」功能下載現有檔案作為範本。<br>
+            2. 支援的欄位：<br>
+            <code>書名</code> (必填), <code>作者</code>, <code>出版社</code>, <code>ISBN</code>, <code>分類</code>, <br>
+            <code>入庫日期</code> (格式 YYYY-MM-DD，若不填則為今天), <br>
+            <code>叢書</code>, <code>集數</code>, <code>出版年</code>, <code>狀態</code>, <code>評分</code>, <code>位置</code>, <code>標籤</code>
         </div>
         <p style="text-align: center; margin-top: 20px;">
             <a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">« 返回首頁</a>
@@ -48,9 +51,7 @@
     <script>
         function showFileName() {
             const input = document.getElementById('file');
-            const output = document.getElementById('file-name');
-            if (input.files.length > 0) output.textContent = "已選擇: " + input.files[0].name;
-            else output.textContent = "";
+            document.getElementById('file-name').textContent = input.files.length > 0 ? "已選擇: " + input.files[0].name : "";
         }
     </script>
 </body>
