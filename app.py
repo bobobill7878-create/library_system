@@ -584,7 +584,7 @@ def import_books():
 # ==========================================
 def keep_alive():
     # 請將此網址改為您 Render 部署後的實際網址
-    url = "https://library-system-9ti8.onrender.com/" 
+    url = "https://library-system-9ti8.onrender.com" 
     while True:
         time.sleep(600)  # 每 10 分鐘 (600秒) 喚醒一次
         try:
