@@ -8,56 +8,30 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; background-color: #f9f9f9; }
         form { max-width: 700px; width: 100%; padding: 30px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); background-color: #fff; }
-        
         .isbn-group { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
         .isbn-group input { flex-grow: 1; padding: 12px; border: 2px solid #eee; border-radius: 6px; font-size: 16px; transition: border-color 0.3s; }
         .isbn-group input:focus { border-color: #007bff; outline: none; }
-        
-        .row { display: flex; gap: 15px; margin-bottom: 15px; } 
-        .row > div { flex: 1; }
-        
+        .row { display: flex; gap: 15px; margin-bottom: 15px; } .row > div { flex: 1; }
         label { font-weight: 600; font-size: 0.9em; color: #555; margin-bottom: 5px; display: block; }
         input[type="text"], input[type="number"], select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
-        .btn-scan { background-color: #17a2b8; }
-        .btn-search { background-color: #007bff; }
-        .btn-submit { background-color: #28a745; width: 100%; font-size: 1.1em; margin-top: 20px; padding: 12px; }
-        
-        /* 封面預覽 */
+        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-scan { background-color: #17a2b8; } .btn-search { background-color: #007bff; } .btn-submit { background-color: #28a745; width: 100%; font-size: 1.1em; margin-top: 20px; padding: 12px; }
         .preview-area { text-align: center; margin: 15px 0; min-height: 150px; background: #fafafa; border: 1px dashed #ddd; border-radius: 8px; padding: 10px; display: none; }
         .preview-area img { max-height: 200px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        
-        /* 掃描器 */
         #reader-container { display: none; margin-bottom: 20px; text-align: center; background: #000; padding: 10px; border-radius: 8px; }
         #reader { width: 100%; max-width: 400px; margin: 0 auto; }
-        
-        /* 輔助連結按鈕 */
-        .helper-links { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 20px; flex-wrap: wrap; }
-        .btn-help { background-color: #6c757d; font-size: 12px; padding: 5px 10px; border-radius: 15px; }
-        .btn-help.momo { background-color: #d63384; }
-        .btn-help.books { background-color: #0d6efd; }
-        
-        /* 訊息提示 */
         #msg-box { font-size: 14px; margin-top: 5px; min-height: 20px; font-weight: bold; }
-        
         /* Modal */
         .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
         .modal-content { background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; }
         .search-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
         .search-item:hover { background-color: #f5f5f5; }
-        .search-item img { width: 50px; height: 70px; object-fit: cover; }
     </style>
 </head>
 <body>
     <h1>➕ 新增圖書</h1>
-    
     <form method="POST" enctype="multipart/form-data">
-        <div id="reader-container">
-            <div id="reader"></div>
-            <button type="button" class="btn" style="background:#dc3545; margin-top:10px;" onclick="stopScanner()">❌ 關閉鏡頭</button>
-        </div>
-
+        <div id="reader-container"><div id="reader"></div><button type="button" class="btn" style="background:#dc3545; margin-top:10px;" onclick="stopScanner()">❌ 關閉鏡頭</button></div>
         <label>ISBN (掃描或輸入):</label>
         <div class="isbn-group">
             <input type="text" id="isbn" name="isbn" placeholder="例如: 978986..." onkeydown="if(event.key==='Enter'){event.preventDefault();lookupBookData();}">
@@ -66,22 +40,10 @@
         </div>
         <div id="msg-box"></div>
 
-        <div class="helper-links">
-            <span style="font-size: 12px; color: #666; display: flex; align-items: center;">手動查詢:</span>
-            <a href="#" target="_blank" id="link-momo" class="btn btn-help momo">MOMO</a>
-            <a href="#" target="_blank" id="link-books" class="btn btn-help books">博客來</a>
-            <a href="#" target="_blank" id="link-google" class="btn btn-help">Google</a>
-        </div>
-
         <hr style="border:0; border-top:1px solid #eee; margin: 15px 0;">
-
         <label>封面圖片網址:</label>
         <input type="text" id="cover_url" name="cover_url" placeholder="https://..." oninput="updatePreview()">
-        
-        <div id="preview-area" class="preview-area">
-            <img id="preview-img" src="">
-            <div style="font-size:12px; color:#aaa; margin-top:5px;">封面預覽</div>
-        </div>
+        <div id="preview-area" class="preview-area"><img id="preview-img" src=""></div>
 
         <label>書名 <span style="color:red">*</span>:</label>
         <div style="display: flex; gap: 10px;">
@@ -89,148 +51,60 @@
             <button type="button" class="btn btn-search" onclick="searchTitleModal()">🔍 搜書名</button>
         </div>
         
-        <div class="row" style="margin-top: 15px;">
-            <div><label>作者 <span style="color:red">*</span>:</label><input type="text" id="author" name="author" required></div>
-            <div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div>
-        </div>
-
+        <div class="row" style="margin-top: 15px;"><div><label>作者 <span style="color:red">*</span>:</label><input type="text" id="author" name="author" required></div><div><label>出版社:</label><input type="text" id="publisher" name="publisher"></div></div>
+        <div class="row"><div><label>叢書系列:</label><input type="text" id="series" name="series"></div><div><label>集數:</label><input type="text" id="volume" name="volume"></div></div>
         <div class="row">
-            <div><label>叢書系列:</label><input type="text" id="series" name="series"></div>
-            <div><label>集數:</label><input type="text" id="volume" name="volume"></div>
+            <div><label>分類:</label><select id="category" name="category"><option value="">-- 請選擇 --</option>{% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}</select></div>
+            <div><label>版本:</label><select id="print_version" name="print_version"><option value="">一般</option><option value="首刷">首刷</option><option value="限定版">限定版</option></select></div>
         </div>
-
         <div class="row">
-            <div>
-                <label>分類:</label>
-                <select id="category" name="category">
-                    <option value="">-- 請選擇 --</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat.id }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label>版本:</label>
-                <select id="print_version" name="print_version">
-                    <option value="">一般</option>
-                    <option value="首刷">首刷</option>
-                    <option value="限定版">限定版</option>
-                    <option value="再版">再版</option>
-                </select>
-            </div>
+            <div><label>出版年:</label><input type="number" id="year" name="year"></div><div><label>月:</label><input type="number" id="month" name="month"></div>
+            <div><label>狀態:</label><select name="status"><option value="未讀">未讀</option><option value="閱讀中">閱讀中</option><option value="已讀完">已讀完</option></select></div>
         </div>
-
-        <div class="row">
-            <div><label>出版年:</label><input type="number" id="year" name="year"></div>
-            <div><label>月:</label><input type="number" id="month" name="month"></div>
-            <div>
-                <label>狀態:</label>
-                <select name="status">
-                    <option value="未讀">未讀</option>
-                    <option value="閱讀中">閱讀中</option>
-                    <option value="已讀完">已讀完</option>
-                    <option value="棄坑">棄坑</option>
-                </select>
-            </div>
-            <div>
-                <label>評分:</label>
-                <select name="rating">
-                    <option value="0">-</option>
-                    <option value="5">⭐⭐⭐⭐⭐</option>
-                    <option value="4">⭐⭐⭐⭐</option>
-                    <option value="3">⭐⭐⭐</option>
-                    <option value="2">⭐⭐</option>
-                    <option value="1">⭐</option>
-                </select>
-            </div>
-        </div>
-
-        <label>簡介:</label>
-        <textarea id="description" name="description" rows="3"></textarea>
-        
-        <label>位置/標籤:</label>
-        <div class="row">
-            <input type="text" name="location" placeholder="例如: 書櫃A-3">
-            <input type="text" name="tags" placeholder="例如: 魔法, 冒險">
-        </div>
-
+        <label>簡介:</label><textarea id="description" name="description" rows="3"></textarea>
+        <div class="row"><input type="text" name="location" placeholder="位置..."><input type="text" name="tags" placeholder="標籤..."></div>
         <button type="submit" class="btn btn-submit">💾 儲存圖書</button>
-        <p style="text-align: center; margin-top: 15px;"><a href="/" style="text-decoration: none; color: #666;">取消返回</a></p>
+        <p style="text-align: center;"><a href="/" style="color: #666;">取消返回</a></p>
     </form>
 
     <div id="searchModal" class="modal">
-        <div class="modal-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h3 style="margin:0;">📚 Google Books 搜尋結果</h3>
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
+                <h3 style="margin:0;">🔍 混合搜尋 (博客來+Google)</h3>
                 <span onclick="document.getElementById('searchModal').style.display='none'" style="cursor:pointer; font-size:24px;">&times;</span>
             </div>
-            <div id="search-results"></div>
+            <div id="search-status" style="text-align:center; padding:10px; color:#666; display:none;">搜尋中...</div>
+            <div id="search-results" style="max-height: 50vh; overflow-y: auto;"></div>
         </div>
     </div>
 
     <script>
-        // === 1. 預覽圖片 ===
         function updatePreview() {
             const url = document.getElementById('cover_url').value;
             const area = document.getElementById('preview-area');
             const img = document.getElementById('preview-img');
-            if(url) { img.src = url; area.style.display = 'block'; }
-            else { area.style.display = 'none'; }
+            if(url) { img.src = url; area.style.display = 'block'; } else { area.style.display = 'none'; }
         }
 
-        // === 2. 掃描器邏輯 ===
         let html5QrCode;
         function startScanner() {
             document.getElementById('reader-container').style.display = 'block';
             html5QrCode = new Html5Qrcode("reader");
             html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
-                document.getElementById('isbn').value = text;
-                stopScanner();
-                lookupBookData();
-            }).catch(err => alert("無法啟動相機，請確認權限或 HTTPS"));
+                document.getElementById('isbn').value = text; stopScanner(); lookupBookData();
+            }).catch(err => alert("無法啟動相機"));
         }
-        function stopScanner() {
-            if(html5QrCode) html5QrCode.stop().then(() => {
-                document.getElementById('reader-container').style.display = 'none';
-            });
-        }
+        function stopScanner() { if(html5QrCode) html5QrCode.stop(); document.getElementById('reader-container').style.display = 'none'; }
 
-        // === 3. 更新外部連結 ===
-        document.getElementById('isbn').addEventListener('input', function(e) {
-            const isbn = e.target.value;
-            document.getElementById('link-momo').href = `https://m.momoshop.com.tw/search.momo?searchKeyword=${isbn}`;
-            document.getElementById('link-books').href = `https://search.books.com.tw/search/query/key/${isbn}/cat/all`;
-            document.getElementById('link-google').href = `https://www.google.com/search?q=${isbn}`;
-        });
-
-        // === 4. API 查詢 (核心) ===
         function lookupBookData() {
             const isbn = document.getElementById('isbn').value.replace(/-/g, '').trim();
             if(!isbn) { alert("請輸入 ISBN"); return; }
-            
             const msg = document.getElementById('msg-box');
-            msg.innerText = "⏳ 正在召喚爬蟲查詢中...";
-            msg.style.color = "blue";
-            
-            // 觸發輸入事件以更新連結
-            document.getElementById('isbn').dispatchEvent(new Event('input'));
-
-            fetch(`/api/lookup_isbn/${isbn}`)
-                .then(r => r.json())
-                .then(d => {
-                    if(d.error) {
-                        msg.innerText = "❌ 查無資料，請嘗試手動輸入或用書名搜尋";
-                        msg.style.color = "red";
-                    } else {
-                        msg.innerText = "✅ 查詢成功！";
-                        msg.style.color = "green";
-                        fillForm(d);
-                    }
-                })
-                .catch(e => {
-                    msg.innerText = "❌ 連線錯誤";
-                    msg.style.color = "red";
-                });
+            msg.innerText = "⏳ 爬蟲查詢中..."; msg.style.color = "blue";
+            fetch(`/api/lookup_isbn/${isbn}`).then(r => r.json()).then(d => {
+                if(d.error) { msg.innerText = "❌ 查無資料"; msg.style.color = "red"; }
+                else { msg.innerText = "✅ 查詢成功！"; msg.style.color = "green"; fillForm(d); }
+            });
         }
 
         function fillForm(d) {
@@ -240,81 +114,35 @@
             if(d.year) document.getElementById('year').value = d.year;
             if(d.month) document.getElementById('month').value = d.month;
             if(d.description) document.getElementById('description').value = d.description;
-            if(d.cover_url) {
-                document.getElementById('cover_url').value = d.cover_url;
-                updatePreview();
-            }
+            if(d.cover_url) { document.getElementById('cover_url').value = d.cover_url; updatePreview(); }
         }
 
-        // === 5. 書名搜尋 Modal ===
         function searchTitleModal() {
             const keyword = document.getElementById('title').value.trim();
-            if(!keyword) { alert("請先輸入書名關鍵字"); return; }
-            
+            if(!keyword) { alert("請先輸入書名"); return; }
             const modal = document.getElementById('searchModal');
             const resDiv = document.getElementById('search-results');
-            resDiv.innerHTML = "搜尋中...";
-            modal.style.display = 'block';
-
-            // 直接呼叫 Google Books API (前端直連，速度快)
-            fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(keyword)}&maxResults=10`)
-                .then(r => r.json())
-                .then(data => {
-                    resDiv.innerHTML = "";
-                    if(!data.items) { resDiv.innerHTML = "無結果"; return; }
-                    
-                    data.items.forEach(item => {
-                        const v = item.volumeInfo;
-                        const div = document.createElement('div');
-                        div.className = 'search-item';
-                        
-                        let imgUrl = v.imageLinks ? v.imageLinks.smallThumbnail : '';
-                        if(imgUrl) imgUrl = imgUrl.replace('http:', 'https:');
-                        
-                        // 嘗試找 ISBN
-                        let isbn = "";
-                        if(v.industryIdentifiers) {
-                            let ident = v.industryIdentifiers.find(i => i.type === 'ISBN_13') || v.industryIdentifiers[0];
-                            if(ident) isbn = ident.identifier;
-                        }
-
-                        div.innerHTML = `
-                            <img src="${imgUrl || 'https://via.placeholder.com/50'}" alt="cover">
-                            <div>
-                                <div style="font-weight:bold; color:#007bff;">${v.title}</div>
-                                <div style="font-size:12px; color:#666;">${v.authors ? v.authors.join(',') : '未知'} | ${v.publisher||''}</div>
-                            </div>
-                        `;
-                        div.onclick = () => {
-                            // 填入資料
-                            document.getElementById('title').value = v.title;
-                            document.getElementById('author').value = v.authors ? v.authors.join(',') : '';
-                            document.getElementById('publisher').value = v.publisher || '';
-                            if(v.publishedDate) {
-                                document.getElementById('year').value = v.publishedDate.split('-')[0];
-                            }
-                            document.getElementById('description').value = v.description || '';
-                            if(imgUrl) {
-                                document.getElementById('cover_url').value = imgUrl;
-                                updatePreview();
-                            }
-                            if(isbn) {
-                                document.getElementById('isbn').value = isbn;
-                                // 更新連結
-                                document.getElementById('isbn').dispatchEvent(new Event('input'));
-                            }
-                            modal.style.display = 'none';
-                        };
-                        resDiv.appendChild(div);
-                    });
+            const statusDiv = document.getElementById('search-status');
+            modal.style.display = 'block'; resDiv.innerHTML = ""; statusDiv.style.display = 'block'; statusDiv.innerHTML = "🔍 搜尋中...";
+            
+            fetch(`/api/search_keyword/${encodeURIComponent(keyword)}`).then(r => r.json()).then(data => {
+                statusDiv.style.display = 'none';
+                if(!data || data.length === 0) { resDiv.innerHTML = "<p style='text-align:center;'>找不到相關書籍。</p>"; return; }
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'search-item';
+                    const badge = item.source === '博客來' ? '<span style="background:#d63384; color:white; font-size:10px; padding:2px 5px; border-radius:4px;">博客來</span>' : '<span style="background:#4285F4; color:white; font-size:10px; padding:2px 5px; border-radius:4px;">Google</span>';
+                    div.innerHTML = `<img src="${item.cover_url || ''}"><div><div style="font-weight:bold; color:#007bff;">${item.title}</div><div style="font-size:12px;">${badge} ${item.author}</div></div>`;
+                    div.onclick = () => {
+                        fillForm(item);
+                        if(item.isbn) { document.getElementById('isbn').value = item.isbn; lookupBookData(); }
+                        modal.style.display = 'none';
+                    };
+                    resDiv.appendChild(div);
                 });
+            }).catch(e => statusDiv.innerHTML = "❌ 錯誤");
         }
-        
-        window.onclick = function(event) {
-            if (event.target == document.getElementById('searchModal')) {
-                document.getElementById('searchModal').style.display = "none";
-            }
-        }
+        window.onclick = function(e) { if (e.target == document.getElementById('searchModal')) document.getElementById('searchModal').style.display = "none"; }
     </script>
 </body>
 </html>
