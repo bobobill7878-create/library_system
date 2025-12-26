@@ -9,33 +9,29 @@
         .container { max-width: 600px; width: 100%; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         h1 { color: #333; text-align: center; }
         .btn-back { display: inline-block; margin-bottom: 20px; text-decoration: none; color: #666; font-weight: bold; }
-        
         form { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
         input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
         button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; }
         .btn-add { background-color: #28a745; }
-        .btn-delete { background-color: #dc3545; padding: 5px 10px; font-size: 12px; }
-        
+        .btn-delete { background-color: #dc3545; padding: 5px 12px; font-size: 13px; }
         ul { list-style: none; padding: 0; }
         li { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="/" class="btn-back">← 回首頁</a>
-        <h1>分類管理</h1>
-
+        <a href="/" class="btn-back">« 回首頁</a>
+        <h1>🏷️ 分類管理</h1>
         <form method="POST" action="/categories">
             <input type="text" name="name" placeholder="輸入新分類名稱..." required>
             <button type="submit" class="btn-add">新增</button>
         </form>
-
         <ul>
             {% for cat in categories %}
             <li>
-                <span>{{ cat.name }}</span>
-                <form action="{{ url_for('delete_category', id=cat.id) }}" method="POST" style="margin:0; border:none; padding:0; width:auto;">
-                    <button type="submit" class="btn-delete" onclick="return confirm('確定刪除？')">刪除</button>
+                <span class="cat-name">{{ cat.name }}</span>
+                <form action="{{ url_for('delete_category', category_id=cat.id) }}" method="POST" style="margin:0; border:none; padding:0; width:auto;">
+                    <button type="submit" class="btn-delete" onclick="return confirm('確定要刪除「{{ cat.name }}」嗎？')">刪除</button>
                 </form>
             </li>
             {% endfor %}
