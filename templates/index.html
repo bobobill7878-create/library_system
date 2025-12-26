@@ -7,49 +7,20 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; }
         .container { max-width: 1200px; margin: 0 auto; }
-        
-        /* 工具列 */
         .toolbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; color: white; font-size: 14px; display: inline-flex; align-items: center; }
         .btn-add { background-color: #28a745; }
         .btn-cat { background-color: #17a2b8; }
         .btn-dash { background-color: #6610f2; }
-        .btn-export { background-color: #fd7e14; }
-        .btn-import { background-color: #6f42c1; }
-        
-        /* 搜尋區塊 */
         .search-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
         .search-box select, .search-box input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         .search-input { flex-grow: 1; }
-
-        /* 表格樣式 */
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
         th { background-color: #f8f9fa; color: #555; font-weight: 600; }
         tr:hover { background-color: #f1f1f1; }
-
-        /* 卡片樣式 */
-        .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .book-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; display: flex; gap: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: transform 0.2s; position: relative; }
-        .book-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .book-cover { width: 80px; height: 110px; flex-shrink: 0; background-color: #eee; border-radius: 4px; overflow: hidden; }
-        .book-cover img { width: 100%; height: 100%; object-fit: cover; }
-        .book-info { flex-grow: 1; overflow: hidden; }
-        .book-title { margin: 0 0 5px 0; font-size: 18px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .book-meta { font-size: 13px; color: #666; margin-bottom: 3px; }
-        
-        /* 狀態標籤 */
         .status-badge { padding: 3px 8px; border-radius: 12px; font-size: 12px; color: white; display: inline-block; }
-        .status-未讀, .st-unread { background-color: #dc3545; }
-        .status-閱讀中, .st-reading { background-color: #17a2b8; }
-        .status-已讀完, .st-done { background-color: #28a745; }
-        .status-棄坑, .st-dropped { background-color: #6c757d; }
-
-        .action-links { margin-top: 10px; font-size: 13px; }
-        .action-links a { margin-right: 10px; text-decoration: none; color: #007bff; }
-        .action-links a.delete-btn { color: #dc3545; }
-
-        /* Modal 樣式 */
+        .st-unread { background-color: #dc3545; } .st-reading { background-color: #17a2b8; } .st-done { background-color: #28a745; } .st-dropped { background-color: #6c757d; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
         .modal-content { background-color: white; margin: 5% auto; padding: 25px; width: 80%; max-width: 800px; border-radius: 8px; position: relative; max-height: 90vh; overflow-y: auto; }
         .close { float: right; font-size: 28px; cursor: pointer; color: #aaa; }
@@ -58,12 +29,8 @@
         .detail-info { flex: 1; }
         .info-grid { display: grid; grid-template-columns: 100px auto; row-gap: 8px; }
         .label { font-weight: bold; color: #666; }
-
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .empty-state { text-align: center; color: #888; margin-top: 50px; grid-column: 1 / -1; }
-        
-        /* 為了同時顯示表格和卡片，這裡做了一些調整 */
-        .view-section { margin-bottom: 40px; }
     </style>
 </head>
 <body>
@@ -71,13 +38,10 @@
         <div class="header">
             <h1>📚 我的圖書館 ({{ books|length }} 本)</h1>
         </div>
-        
         <div class="toolbar">
             <a href="{{ url_for('add_book') }}" class="btn btn-add">➕ 新增書籍</a>
             <a href="{{ url_for('manage_categories') }}" class="btn btn-cat">⚙️ 分類管理</a>
             <a href="{{ url_for('dashboard') }}" class="btn btn-dash">📊 數據儀表板</a>
-            <a href="{{ url_for('export_csv') }}" class="btn btn-export">💾 匯出 Excel</a>
-            <a href="{{ url_for('import_books') }}" class="btn btn-import">📥 匯入 Excel</a>
         </div>
         
         <form method="GET" action="{{ url_for('index') }}" class="search-box">
@@ -104,70 +68,65 @@
             <a href="{{ url_for('index') }}" class="btn" style="background-color: #6c757d;">重設</a>
         </form>
 
-        <div class="view-section">
-            {% if books %}
-            <table>
-                <thead>
-                    <tr>
-                        <th width="50">封面</th>
-                        <th>書名 / 叢書</th>
-                        <th>作者</th>
-                        <th>分類</th>
-                        <th>狀態</th>
-                        <th>評分</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for book in books %}
-                    <tr>
-                        <td>{% if book.cover_url %}<img src="{{ book.cover_url }}" width="40">{% endif %}</td>
-                        <td>
-                            <a href="#" onclick="openModal({{ book.id }}); return false;" style="font-weight: bold; color: #007bff; text-decoration: none; font-size: 1.1em;">
-                                {{ book.title }}
-                            </a>
-                            {% if book.series %}
-                            <div style="font-size: 0.85em; color: #666;">
-                                {{ book.series }} {% if book.volume %}#{{ book.volume }}{% endif %}
-                            </div>
-                            {% endif %}
-                        </td>
-                        <td>{{ book.author }}</td>
-                        <td>{{ book.category.name if book.category else '' }}</td>
-                        <td>
-                            {% set s_class = 'st-unread' %}
-                            {% if book.status == '閱讀中' %}{% set s_class = 'st-reading' %}
-                            {% elif book.status == '已讀完' %}{% set s_class = 'st-done' %}
-                            {% elif book.status == '棄坑' %}{% set s_class = 'st-dropped' %}{% endif %}
-                            <span class="status-badge {{ s_class }}">{{ book.status }}</span>
-                        </td>
-                        <td>{{ '⭐' * book.rating if book.rating > 0 else '-' }}</td>
-                        <td>
-                            <a href="{{ url_for('edit_book', book_id=book.id) }}" style="text-decoration: none;">✏️</a>
-    
-                            <form action="{{ url_for('delete_book', book_id=book.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除這本書嗎？');">
-                                <button type="submit" style="border:none; background:none; cursor:pointer; color:red;">❌</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty-state">
-                <h3>📭 找不到書籍</h3>
-                <p>試著調整搜尋條件，或是新增第一本書吧！</p>
-            </div>
-            {% endif %}
+        {% if books %}
+        <table>
+            <thead>
+                <tr>
+                    <th width="50">封面</th>
+                    <th>書名 / 叢書</th>
+                    <th>作者</th>
+                    <th>分類</th>
+                    <th>狀態</th>
+                    <th>評分</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for book in books %}
+                <tr>
+                    <td>{% if book.cover_url %}<img src="{{ book.cover_url }}" width="40">{% endif %}</td>
+                    <td>
+                        <a href="#" onclick="openModal({{ book.id }}); return false;" style="font-weight: bold; color: #007bff; text-decoration: none; font-size: 1.1em;">
+                            {{ book.title }}
+                        </a>
+                        {% if book.series %}
+                        <div style="font-size: 0.85em; color: #666;">
+                            {{ book.series }} {% if book.volume %}#{{ book.volume }}{% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ book.author }}</td>
+                    <td>{{ book.category.name if book.category else '' }}</td>
+                    <td>
+                        {% set s_class = 'st-unread' %}
+                        {% if book.status == '閱讀中' %}{% set s_class = 'st-reading' %}
+                        {% elif book.status == '已讀完' %}{% set s_class = 'st-done' %}
+                        {% elif book.status == '棄坑' %}{% set s_class = 'st-dropped' %}{% endif %}
+                        <span class="status-badge {{ s_class }}">{{ book.status }}</span>
+                    </td>
+                    <td>{{ '⭐' * book.rating if book.rating > 0 else '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_book', book_id=book.id) }}" style="text-decoration: none; margin-right: 5px;">✏️</a>
+                        <form action="{{ url_for('delete_book', book_id=book.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除這本書嗎？');">
+                            <button type="submit" style="border:none; background:none; cursor:pointer; color:red;">❌</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <h3>📭 找不到書籍</h3>
+            <p>試著調整搜尋條件，或是新增第一本書吧！</p>
         </div>
-        
-        </div>
+        {% endif %}
+    </div>
 
     <div id="bookModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
             <h2 id="mTitle" style="border-bottom: 2px solid #eee; padding-bottom: 10px;"></h2>
-            
             <div class="detail-flex">
                 <div class="detail-cover"><img id="mCover" src=""></div>
                 <div class="detail-info">
@@ -183,55 +142,40 @@
                     </div>
                 </div>
             </div>
-
             <div style="margin-top: 15px;">
                 <span class="label">大綱:</span>
                 <div id="mDesc" style="background:#f9f9f9; padding:10px; border-radius:4px; margin-top:5px; max-height:150px; overflow-y:auto;"></div>
             </div>
-
             <div style="margin-top: 10px;">
                 <span class="label">備註:</span>
                 <div id="mNotes" style="color: #666;"></div>
             </div>
-
             <div style="text-align: right; margin-top: 20px;">
                 <a id="mEditBtn" href="#" class="btn btn-cat">前往編輯</a>
             </div>
         </div>
     </div>
-
     <script>
         const modal = document.getElementById('bookModal');
-        
         function openModal(id) {
-            // 呼叫後端 API 取得書籍詳細資料
-            fetch(`/api/book/${id}`)
-                .then(r => r.json())
-                .then(d => {
-                    if(d.error) { alert('找不到書籍資料'); return; }
-
-                    document.getElementById('mTitle').textContent = d.title;
-                    document.getElementById('mAuthor').textContent = d.author;
-                    document.getElementById('mPublisher').textContent = d.publisher;
-                    document.getElementById('mSeries').textContent = (d.series ? d.series : '') + (d.volume ? ' #' + d.volume : '');
-                    document.getElementById('mStatus').textContent = d.status + (d.rating > 0 ? ' (' + '⭐'.repeat(d.rating) + ')' : '');
-                    document.getElementById('mLocation').textContent = d.location || '未指定';
-                    document.getElementById('mTags').textContent = d.tags || '-';
-                    document.getElementById('mDate').textContent = (d.publish_year || '?') + '年' + (d.publish_month || '?') + '月';
-                    document.getElementById('mISBN').textContent = d.isbn;
-                    document.getElementById('mDesc').textContent = d.description || '無';
-                    document.getElementById('mNotes').textContent = d.notes || '無';
-                    
-                    const img = document.getElementById('mCover');
-                    if (d.cover_url) { img.src = d.cover_url; img.style.display = 'block'; }
-                    else { img.style.display = 'none'; }
-                    
-                    document.getElementById('mEditBtn').href = `/edit/${d.id}`;
-                    modal.style.display = 'block';
-                })
-                .catch(err => console.error('Error:', err));
+            fetch(`/api/book/${id}`).then(r => r.json()).then(d => {
+                document.getElementById('mTitle').textContent = d.title;
+                document.getElementById('mAuthor').textContent = d.author;
+                document.getElementById('mPublisher').textContent = d.publisher;
+                document.getElementById('mSeries').textContent = (d.series ? d.series : '') + (d.volume ? ' #' + d.volume : '');
+                document.getElementById('mStatus').textContent = d.status + (d.rating > 0 ? ' (' + '⭐'.repeat(d.rating) + ')' : '');
+                document.getElementById('mLocation').textContent = d.location || '未指定';
+                document.getElementById('mTags').textContent = d.tags || '-';
+                document.getElementById('mDate').textContent = (d.year || '?') + '年' + (d.month || '?') + '月';
+                document.getElementById('mISBN').textContent = d.isbn;
+                document.getElementById('mDesc').textContent = d.description || '無';
+                document.getElementById('mNotes').textContent = d.notes || '無';
+                const img = document.getElementById('mCover');
+                if (d.cover_url) { img.src = d.cover_url; img.style.display = 'block'; } else { img.style.display = 'none'; }
+                document.getElementById('mEditBtn').href = `/edit/${d.id}`;
+                modal.style.display = 'block';
+            });
         }
-
         function closeModal() { modal.style.display = 'none'; }
         window.onclick = function(e) { if (e.target == modal) closeModal(); }
     </script>
