@@ -3,98 +3,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人圖書管理系統</title>
+    <title>圖書管理系統</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .btn { padding: 8px 15px; border-radius: 5px; text-decoration: none; color: white; font-weight: bold; margin-left: 5px; cursor: pointer;}
-        .btn-add { background-color: #28a745; }
-        .btn-cat { background-color: #6f42c1; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f9f9f9; }
+        .container { max-width: 1200px; margin: 0 auto; }
         
-        .search-bar { margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        input[type="text"], select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        /* 搜尋與按鈕樣式 */
+        .search-box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .search-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .search-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        .btn-search { padding: 10px 25px; background-color: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .btn-reset { padding: 10px 15px; background-color: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; line-height: 1.5; font-size: 14px;}
         
-        .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .book-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; gap: 15px; position: relative; }
-        .book-cover { width: 90px; height: 130px; object-fit: cover; background: #eee; border-radius: 4px; border:1px solid #ddd;}
-        
-        .book-info { flex: 1; }
-        .book-info h3 { margin: 0 0 5px 0; font-size: 1.1em; color: #333; }
-        .book-info p { margin: 3px 0; color: #666; font-size: 0.9em; }
-        
-        /* 標籤與狀態 */
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: white; background: #999; margin-top: 5px; }
-        .status-未讀 { background: #dc3545; }
-        .status-閱讀中 { background: #ffc107; color: #333; }
-        .status-已讀 { background: #28a745; }
-        .status-棄書 { background: #6c757d; }
-        
-        .rating-stars { color: #ffc107; font-size: 14px; }
-        
-        /* 刪除按鈕 */
-        .btn-delete-icon {
-            position: absolute; bottom: 10px; right: 10px;
-            background: none; border: none; color: #dc3545; font-size: 18px; cursor: pointer; opacity: 0.6;
-        }
-        .btn-delete-icon:hover { opacity: 1; transform: scale(1.1); }
+        /* 篩選區塊 */
+        .filter-section { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+        .filter-group { flex: 1; min-width: 200px; }
+        .filter-title { font-weight: bold; margin-bottom: 8px; color: #555; font-size: 14px; }
+        .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+        .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #333; cursor: pointer; }
 
-        .meta-info { font-size: 0.85em; color: #888; margin-top: 5px; }
+        /* 書籍列表樣式 */
+        .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .book-card { 
+            background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; 
+            display: flex; gap: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); 
+            transition: transform 0.2s; cursor: pointer; 
+        }
+        .book-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .book-cover { width: 80px; height: 110px; flex-shrink: 0; background-color: #eee; border-radius: 4px; overflow: hidden; }
+        .book-cover img { width: 100%; height: 100%; object-fit: cover; }
+        .book-info { flex-grow: 1; overflow: hidden; }
+        .book-title { margin: 0 0 5px 0; font-size: 18px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .book-meta { font-size: 13px; color: #666; margin-bottom: 3px; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; color: white; margin-top: 5px; }
+        .status-未讀 { background-color: #dc3545; }
+        .status-閱讀中 { background-color: #17a2b8; }
+        .status-已讀完 { background-color: #28a745; }
+        .status-棄坑 { background-color: #6c757d; }
+        .action-links { margin-top: 10px; font-size: 13px; position: relative; z-index: 2; /* 確保按鈕在點擊事件之上 */ }
+        .action-links a { margin-right: 10px; text-decoration: none; color: #007bff; }
+        .action-links a.delete-btn { color: #dc3545; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .add-btn { background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; }
+
+        /* --- 彈跳視窗 (Modal) CSS --- */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 10px; position: relative; display: flex; flex-direction: column; gap: 20px; }
+        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; position: absolute; right: 20px; top: 10px; cursor: pointer; }
+        .close-btn:hover { color: black; }
+        
+        .modal-body { display: flex; gap: 20px; }
+        .modal-cover { width: 150px; flex-shrink: 0; }
+        .modal-cover img { width: 100%; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .modal-details { flex-grow: 1; }
+        .modal-details h2 { margin-top: 0; color: #333; }
+        .modal-details p { margin: 8px 0; line-height: 1.6; color: #555; }
+        .modal-label { font-weight: bold; color: #333; display: inline-block; width: 70px; }
+        
+        @media (max-width: 600px) {
+            .modal-body { flex-direction: column; align-items: center; }
+            .modal-details { width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📚 我的圖書館</h1>
-        <div>
-            <a href="{{ url_for('manage_categories') }}" class="btn btn-cat">🏷️ 分類管理</a>
-            <a href="{{ url_for('add_book') }}" class="btn btn-add">➕ 新增書籍</a>
+    <div class="container">
+        <div class="header">
+            <h1>📚 我的圖書館</h1>
+            <a href="{{ url_for('add_book') }}" class="add-btn">➕ 新增書籍</a>
         </div>
-    </div>
 
-    <div class="search-bar">
-        <form method="GET" action="/">
-            <input type="text" name="q" placeholder="搜尋書名、作者、ISBN..." value="{{ request.args.get('q', '') }}" style="width: 250px;">
-            <select name="category" onchange="this.form.submit()">
-                <option value="">所有分類</option>
-                {% for cat in categories %}
-                <option value="{{ cat.id }}" {% if request.args.get('category')|int == cat.id %}selected{% endif %}>{{ cat.name }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="btn" style="background:#007bff; border:none;">搜尋</button>
+        <form method="GET" action="/" class="search-box">
+            <div class="search-row">
+                <input type="text" name="q" class="search-input" placeholder="輸入書名、作者或 ISBN..." value="{{ q }}">
+                <button type="submit" class="btn-search">🔍 搜尋</button>
+                <a href="/" class="btn-reset">清除條件</a>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-group">
+                    <div class="filter-title">📂 分類 (可多選)</div>
+                    <div class="checkbox-grid">
+                        {% for cat in categories %}
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="category" value="{{ cat.id }}" 
+                                {% if cat.id|string in selected_cats %}checked{% endif %}>
+                            {{ cat.name }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <div class="filter-title">📖 狀態 (可多選)</div>
+                    <div class="checkbox-grid">
+                        {% for status in ['未讀', '閱讀中', '已讀完', '棄坑'] %}
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="status" value="{{ status }}"
+                                {% if status in selected_status %}checked{% endif %}>
+                            {{ status }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
         </form>
-    </div>
 
-    <div class="book-grid">
-        {% for book in books %}
-        <div class="book-card">
-            <img src="{{ book.cover_url or 'https://via.placeholder.com/90x130?text=No+Image' }}" class="book-cover">
-            <div class="book-info">
-                <h3>{{ book.title }}</h3>
-                <p>作者: {{ book.author or '未知' }}</p>
-                
-                {% if book.series %}
-                <p class="meta-info">系列: {{ book.series }} {{ book.volume or '' }}</p>
-                {% endif %}
-
-                <p>分類: {{ book.category_ref.name if book.category_ref else '無' }}</p>
-                
-                <div style="margin-top: 5px;">
-                    <span class="status-badge status-{{ book.status }}">{{ book.status }}</span>
-                    {% if book.rating %}
-                    <span class="rating-stars">{{ '⭐' * book.rating }}</span>
+        <div class="book-grid">
+            {% for book in books %}
+            <div class="book-card" onclick="openModal(this)"
+                 data-title="{{ book.title }}"
+                 data-author="{{ book.author }}"
+                 data-publisher="{{ book.publisher or '未知' }}"
+                 data-isbn="{{ book.isbn or '無' }}"
+                 data-category="{{ book.category.name if book.category else '未分類' }}"
+                 data-status="{{ book.status }}"
+                 data-rating="{{ book.rating or 0 }}"
+                 data-cover="{{ book.cover_url or '' }}"
+                 data-desc="{{ book.description or '暫無簡介' }}"
+                 data-notes="{{ book.notes or '無筆記' }}"
+                 data-year="{{ book.publish_year or '' }}"
+                 data-location="{{ book.location or '未設定' }}">
+                 
+                <div class="book-cover">
+                    {% if book.cover_url %}
+                    <img src="{{ book.cover_url }}" alt="封面">
+                    {% else %}
+                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc;">無封面</div>
                     {% endif %}
                 </div>
+                <div class="book-info">
+                    <h3 class="book-title">{{ book.title }}</h3>
+                    <div class="book-meta">✍️ {{ book.author }}</div>
+                    <div class="book-meta">📂 {{ book.category.name if book.category else '未分類' }}</div>
+                    <span class="status-badge status-{{ book.status }}">{{ book.status }}</span>
+                    {% if book.rating and book.rating > 0 %}<span style="color: gold;">{{ '⭐' * book.rating }}</span>{% endif %}
+                    
+                    <div class="action-links">
+                        <a href="{{ url_for('edit_book', id=book.id) }}" onclick="event.stopPropagation()">編輯</a>
+                        <a href="{{ url_for('delete_book', id=book.id) }}" class="delete-btn" onclick="event.stopPropagation(); return confirm('確定要刪除嗎？')">刪除</a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div style="grid-column: 1 / -1; text-align: center; color: #888; margin-top: 50px;">
+                <h3>📭 找不到書籍</h3>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 
-                <form action="{{ url_for('delete_book', id=book.id) }}" method="POST" onsubmit="return confirm('確定要刪除這本書嗎？');">
-                    <button type="submit" class="btn-delete-icon" title="刪除書籍">🗑️</button>
-                </form>
+    <div id="bookModal" class="modal" onclick="if(event.target == this) closeModal()">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <div class="modal-body">
+                <div class="modal-cover">
+                    <img id="m-cover" src="" alt="封面" style="display:none;">
+                    <div id="m-no-cover" style="width:100%; height:200px; background:#eee; display:flex; align-items:center; justify-content:center; color:#999; border-radius:6px;">無封面</div>
+                </div>
+                <div class="modal-details">
+                    <h2 id="m-title"></h2>
+                    <p><span class="modal-label">作者:</span> <span id="m-author"></span></p>
+                    <p><span class="modal-label">出版社:</span> <span id="m-publisher"></span></p>
+                    <p><span class="modal-label">狀態:</span> <span id="m-status"></span></p>
+                    <p><span class="modal-label">ISBN:</span> <span id="m-isbn"></span></p>
+                    <p><span class="modal-label">位置:</span> <span id="m-location"></span></p>
+                    <p><span class="modal-label">評分:</span> <span id="m-rating" style="color:gold;"></span></p>
+                    <hr>
+                    <p><strong>📝 簡介:</strong><br><span id="m-desc"></span></p>
+                    <p><strong>📌 筆記:</strong><br><span id="m-notes"></span></p>
+                </div>
             </div>
         </div>
-        {% else %}
-        <div style="grid-column: 1/-1; text-align:center; padding: 40px; color:#666;">
-            <h3>目前沒有書籍</h3>
-            <p>點擊右上角的「新增書籍」開始建立您的圖書館吧！</p>
-        </div>
-        {% endfor %}
     </div>
+
+    <script>
+        function openModal(card) {
+            document.getElementById('m-title').textContent = card.dataset.title;
+            document.getElementById('m-author').textContent = card.dataset.author;
+            document.getElementById('m-publisher').textContent = card.dataset.publisher + (card.dataset.year ? ` (${card.dataset.year})` : '');
+            document.getElementById('m-status').textContent = card.dataset.status;
+            document.getElementById('m-isbn').textContent = card.dataset.isbn;
+            document.getElementById('m-location').textContent = card.dataset.location;
+            document.getElementById('m-desc').textContent = card.dataset.desc;
+            document.getElementById('m-notes').textContent = card.dataset.notes;
+            
+            const rating = parseInt(card.dataset.rating) || 0;
+            document.getElementById('m-rating').textContent = '⭐'.repeat(rating);
+
+            const coverUrl = card.dataset.cover;
+            const imgEl = document.getElementById('m-cover');
+            const noImgEl = document.getElementById('m-no-cover');
+            
+            if (coverUrl && coverUrl !== 'None' && coverUrl !== '') {
+                imgEl.src = coverUrl;
+                imgEl.style.display = 'block';
+                noImgEl.style.display = 'none';
+            } else {
+                imgEl.style.display = 'none';
+                noImgEl.style.display = 'flex';
+            }
+
+            document.getElementById('bookModal').style.display = "block";
+        }
+
+        function closeModal() {
+            document.getElementById('bookModal').style.display = "none";
+        }
+    </script>
 </body>
 </html>
