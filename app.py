@@ -4,7 +4,6 @@ import requests
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
-from werkzeug.utils import secure_filename
 import datetime
 import os
 import uuid
@@ -14,6 +13,7 @@ import pandas as pd
 import io
 import urllib3
 from curl_cffi import requests as crequests
+from concurrent.futures import ThreadPoolExecutor, as_completed # 🔥 新增：用於並行搜尋
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -81,15 +81,18 @@ def allowed_file(filename):
 # --- 爬蟲工具 ---
 def safe_get(url):
     try:
+        # impersonate="chrome120" 可以模擬真實瀏覽器，繞過部分反爬蟲
         response = crequests.get(
             url, impersonate="chrome120", 
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             timeout=10
         )
         return response
-    except: return None
+    except Exception as e:
+        print(f"Fetch Error: {url} - {e}")
+        return None
 
-# ISBN 爬蟲
+# --- ISBN 爬蟲 (單本書詳細資料) ---
 def scrape_momo(isbn):
     url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
     try:
@@ -173,15 +176,15 @@ def scrape_google(isbn):
     except: pass
     return None
 
-# 🔥 關鍵字搜尋 (已調整為抓取更多結果)
+# --- 🔥 關鍵字搜尋 (改進版：多來源 + Readmoo) ---
+
 def search_momo_keyword(keyword):
     try:
-        # MOMO 調整為抓取前 15 筆
         res = safe_get(f"https://m.momoshop.com.tw/search.momo?searchKeyword={keyword}")
         if not res: return []
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
-        for item in soup.select('.goodsItem')[:15]: 
+        for item in soup.select('.goodsItem')[:10]: 
             try:
                 title = item.select_one('.prdName').text.strip()
                 link = item.select_one('a')['href']
@@ -194,22 +197,20 @@ def search_momo_keyword(keyword):
                     "author": "詳見內頁",
                     "publisher": "MOMO來源",
                     "cover_url": cover,
-                    "isbn": "",
-                    "description": ""
+                    "isbn": "", "description": ""
                 })
             except: continue
         return results
-    except: return []
+    except Exception: return []
 
 def search_books_keyword(keyword):
     try:
-        # 博客來 調整為抓取前 15 筆
         res = safe_get(f"https://search.books.com.tw/search/query/key/{keyword}/cat/all")
         if not res: return []
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
         items = soup.select('.table-search-tbody tr') or soup.select('li.item')
-        for item in items[:15]:
+        for item in items[:10]:
             try:
                 title_tag = item.select_one('h4 a') or item.select_one('h3 a')
                 if not title_tag: continue
@@ -225,16 +226,51 @@ def search_books_keyword(keyword):
                     "author": author.strip(),
                     "publisher": publisher.strip(),
                     "cover_url": cover,
-                    "isbn": "",
-                    "description": ""
+                    "isbn": "", "description": ""
                 })
             except: continue
         return results
-    except: return []
+    except Exception: return []
+
+def search_readmoo_keyword(keyword):
+    try:
+        # 🔥 新增 Readmoo 搜尋
+        res = safe_get(f"https://readmoo.com/search/keyword?q={keyword}")
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        results = []
+        # Readmoo 列表結構
+        for item in soup.select('.item-info')[:10]:
+            try:
+                title_tag = item.select_one('h4 a')
+                if not title_tag: continue
+                title = title_tag.text.strip()
+                link = title_tag['href']
+                
+                # 嘗試抓圖片 (稍微麻煩，因為圖片通常在上一層 container)
+                cover = ""
+                parent = item.find_parent('div', class_='thumbnail')
+                if parent:
+                    img = parent.select_one('img')
+                    if img: cover = img.get('data-original') or img.get('src')
+                
+                author_tag = item.select_one('.author a')
+                author = author_tag.text.strip() if author_tag else ""
+                
+                results.append({
+                    "source": "Readmoo",
+                    "title": title,
+                    "author": author,
+                    "publisher": "Readmoo來源",
+                    "cover_url": cover if cover else "",
+                    "isbn": "", "description": ""
+                })
+            except: continue
+        return results
+    except Exception: return []
 
 def search_google_keyword(keyword):
     try:
-        # Google API 調整 maxResults 為 20
         res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=20&printType=books", timeout=5)
         results = []
         if res.status_code == 200:
@@ -257,7 +293,17 @@ def search_google_keyword(keyword):
                     "description": v.get('description', '')
                 })
         return results
-    except: return []
+    except Exception: return []
+
+# --- 輔助：字串正規化 (Fuzzy Matching 核心) ---
+def normalize_string(s):
+    if not s: return ""
+    # 1. 轉小寫
+    s = s.lower()
+    # 2. 移除所有標點符號、括號、空格，只保留 CJK字元(4e00-9fff)、英文字母、數字
+    # 這會把 "書名 (7)" 變成 "書名7"
+    s = re.sub(r'[^\u4e00-\u9fa5a-z0-9]', '', s)
+    return s
 
 # --- Routes ---
 @app.route('/init_db')
@@ -362,17 +408,14 @@ def edit_book(book_id):
             try: book.added_date = datetime.datetime.strptime(d, '%Y-%m-%d').date()
             except: pass
 
-        # 🔥 修復編輯時圖片無法儲存的邏輯
-        # 邏輯：優先檢查是否有檔案上傳 -> 若無，則檢查是否有網址文字 -> 若有網址文字(包含空字串代表清空)，則更新
         file = request.files.get('cover_file')
         if file and file.filename and allowed_file(file.filename):
             fname = f"{uuid.uuid4().hex}.{file.filename.rsplit('.', 1)[1].lower()}"
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
             book.cover_url = url_for('static', filename=f'covers/{fname}')
         else:
-            # 如果沒有上傳新檔案，檢查是否更新了 URL
             new_url = request.form.get('cover_url')
-            if new_url is not None: # 只要欄位存在就更新，允許使用者清空圖片
+            if new_url is not None: 
                 book.cover_url = new_url
 
         db.session.commit()
@@ -416,22 +459,46 @@ def lookup_isbn(isbn):
     if res := scrape_google(clean): return jsonify(res)
     return jsonify({"error": "Not Found"}), 404
 
-# 🔥 新增：檢查書名是否存在 API
+# 🔥 核心：Fuzzy Check API
 @app.route('/api/check_title')
 def check_title():
-    title = request.args.get('title', '').strip()
-    if not title: return jsonify({'exists': False})
-    # 使用 ilike 忽略大小寫
-    exists = Book.query.filter(Book.title.ilike(title)).first() is not None
-    return jsonify({'exists': exists})
+    raw_title = request.args.get('title', '').strip()
+    if not raw_title: return jsonify({'exists': False, 'match': None})
+    
+    target = normalize_string(raw_title)
+    
+    # 這裡取出所有書名做比對 (若書庫非常巨大 > 5000本，建議改用 SQL 配合)
+    all_books = db.session.query(Book.title).all() # returns list of tuples
+    
+    for (db_title,) in all_books:
+        if normalize_string(db_title) == target:
+            return jsonify({'exists': True, 'match': db_title})
+            
+    return jsonify({'exists': False})
 
+# 🔥 核心：並行搜尋 API
 @app.route('/api/search_keyword/<keyword>')
 def search_keyword(keyword):
     if not keyword: return jsonify([]), 400
-    r1 = search_books_keyword(keyword)
-    r2 = search_momo_keyword(keyword)
-    r3 = search_google_keyword(keyword)
-    return jsonify(r1 + r2 + r3)
+    
+    results = []
+    # 使用 ThreadPoolExecutor 同時跑 4 個爬蟲
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(search_google_keyword, keyword),
+            executor.submit(search_books_keyword, keyword),
+            executor.submit(search_momo_keyword, keyword),
+            executor.submit(search_readmoo_keyword, keyword)
+        ]
+        
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+                if data: results.extend(data)
+            except Exception as e:
+                print(f"Search thread error: {e}")
+
+    return jsonify(results)
 
 @app.route('/dashboard')
 def dashboard():
