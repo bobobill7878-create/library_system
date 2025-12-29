@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .preview-img { max-width: 150px; max-height: 200px; display: none; margin-top: 10px; border: 1px solid #ddd; padding: 5px; }
-        /* 讓搜尋結果 Modal 可以捲動 */
         .list-group { max-height: 60vh; overflow-y: auto; }
     </style>
 </head>
@@ -40,11 +39,12 @@
                         {% endif %}
 
                         <div class="mb-4 p-3 bg-light border rounded">
-                            <label class="form-label fw-bold">關鍵字搜尋 (Google / 博客來 / MOMO)</label>
+                            <label class="form-label fw-bold">關鍵字搜尋 (Google / 博客來 / MOMO / Readmoo)</label>
                             <div class="input-group">
-                                <input type="text" id="keyword" class="form-control" placeholder="輸入書名搜尋 (結果較多，請稍候)...">
+                                <input type="text" id="keyword" class="form-control" placeholder="輸入書名搜尋...">
                                 <button type="button" class="btn btn-secondary" onclick="searchTitleModal()">搜尋</button>
                             </div>
+                            <small class="text-muted">支援多來源搜尋，速度可能稍慢請見諒。</small>
                         </div>
 
                         <form id="addBookForm" method="POST" enctype="multipart/form-data">
@@ -219,7 +219,7 @@
             const kw = document.getElementById('keyword').value;
             if(!kw) { alert("請輸入關鍵字"); return; }
             const resDiv = document.getElementById('search-results');
-            resDiv.innerHTML = "<div class='text-center p-3'>⏳ 正在搜尋 Google, 博客來, MOMO (結果較多請稍候)...</div>";
+            resDiv.innerHTML = "<div class='text-center p-3'>⏳ 正在從 Google, 博客來, MOMO, Readmoo 搜尋...</div>";
             new bootstrap.Modal(document.getElementById('searchModal')).show();
             fetch(`/api/search_keyword/${kw}`)
                 .then(r => r.json())
@@ -228,11 +228,16 @@
                     let html = '<div class="list-group">';
                     data.forEach(item => {
                         const jsonItem = JSON.stringify(item).replace(/"/g, '&quot;');
+                        let badgeClass = "bg-secondary";
+                        if(item.source === "博客來") badgeClass = "bg-success";
+                        if(item.source === "MOMO") badgeClass = "bg-danger";
+                        if(item.source === "Readmoo") badgeClass = "bg-info text-dark";
+                        
                         html += `
                             <button type="button" class="list-group-item list-group-item-action" onclick="selectBook(${jsonItem})">
                                 <div class="d-flex w-100 justify-content-between">
                                     <h6 class="mb-1">${item.title}</h6>
-                                    <small class="badge bg-secondary">${item.source}</small>
+                                    <small class="badge ${badgeClass}">${item.source}</small>
                                 </div>
                                 <div class="d-flex mt-2">
                                     <img src="${item.cover_url}" style="height:60px; width:auto; margin-right:10px; object-fit:contain;" onerror="this.style.display='none'">
@@ -256,32 +261,19 @@
             bootstrap.Modal.getInstance(document.getElementById('searchModal')).hide();
         }
 
-        // 🔥 重複書籍檢查邏輯
         document.getElementById('addBookForm').addEventListener('submit', async function(e) {
-            // 1. 先確認表單基本驗證通過 (required 欄位)
             if (!this.checkValidity()) return;
-
-            // 2. 暫停提交，先檢查書名
             e.preventDefault();
             const title = document.getElementById('title').value;
-            
             try {
-                // 編碼書名以處理特殊字元
                 const res = await fetch(`/api/check_title?title=${encodeURIComponent(title)}`);
                 const data = await res.json();
-                
                 if (data.exists) {
-                    // 3. 如果已存在，詢問使用者
-                    const confirmAdd = confirm(`書庫中已經有一本名為《${title}》的書了。\n\n您確定要重複新增嗎？`);
-                    if (!confirmAdd) {
-                        return; // 使用者按取消，不執行任何動作
-                    }
+                    const confirmAdd = confirm(`⚠️ 系統偵測到相似書籍！\n\n您的輸入：${title}\n庫存相似：${data.match}\n\n您確定要重複新增嗎？`);
+                    if (!confirmAdd) return;
                 }
-                // 4. 提交表單 (手動提交)
                 this.submit();
             } catch (err) {
-                console.error("檢查失敗", err);
-                // 如果檢查 API 壞了，為了不擋住使用者，還是讓他們新增
                 this.submit(); 
             }
         });
