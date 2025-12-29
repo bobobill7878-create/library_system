@@ -89,7 +89,7 @@ def safe_get(url):
         return response
     except: return None
 
-# ISBN 爬蟲 (MOMO, 三民, 博客來, Google) - 保持原本邏輯
+# ISBN 爬蟲
 def scrape_momo(isbn):
     url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
     try:
@@ -173,48 +173,43 @@ def scrape_google(isbn):
     except: pass
     return None
 
-# 🔥 新增：MOMO 關鍵字搜尋
+# 🔥 關鍵字搜尋 (已調整為抓取更多結果)
 def search_momo_keyword(keyword):
     try:
+        # MOMO 調整為抓取前 15 筆
         res = safe_get(f"https://m.momoshop.com.tw/search.momo?searchKeyword={keyword}")
         if not res: return []
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
-        for item in soup.select('.goodsItem')[:5]: # 取前5筆
+        for item in soup.select('.goodsItem')[:15]: 
             try:
                 title = item.select_one('.prdName').text.strip()
                 link = item.select_one('a')['href']
                 if not link.startswith("http"): link = "https://m.momoshop.com.tw" + link
-                
-                # 簡單抓作者出版社
-                desc_text = item.get_text()
-                pub = ""
-                # MOMO 列表頁資訊較少，主要抓標題封面
                 img = item.select_one('img')
                 cover = img.get('src') if img else ""
-
                 results.append({
                     "source": "MOMO",
                     "title": title,
                     "author": "詳見內頁",
                     "publisher": "MOMO來源",
                     "cover_url": cover,
-                    "isbn": "", # 列表頁通常沒ISBN
+                    "isbn": "",
                     "description": ""
                 })
             except: continue
         return results
     except: return []
 
-# 🔥 新增：博客來 關鍵字搜尋 (改進版)
 def search_books_keyword(keyword):
     try:
+        # 博客來 調整為抓取前 15 筆
         res = safe_get(f"https://search.books.com.tw/search/query/key/{keyword}/cat/all")
         if not res: return []
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
         items = soup.select('.table-search-tbody tr') or soup.select('li.item')
-        for item in items[:5]:
+        for item in items[:15]:
             try:
                 title_tag = item.select_one('h4 a') or item.select_one('h3 a')
                 if not title_tag: continue
@@ -222,10 +217,8 @@ def search_books_keyword(keyword):
                 img = item.select_one('img')
                 cover = img.get('data-src') or img.get('src') or ""
                 if cover and not cover.startswith('http'): cover = 'https:' + cover
-                
                 author = (item.select_one('a[rel="go_author"]') or {}).text or ""
                 publisher = (item.select_one('a[rel="go_publisher"]') or {}).text or ""
-                
                 results.append({
                     "source": "博客來",
                     "title": title,
@@ -239,10 +232,10 @@ def search_books_keyword(keyword):
         return results
     except: return []
 
-# Google 關鍵字
 def search_google_keyword(keyword):
     try:
-        res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=5&printType=books", timeout=5)
+        # Google API 調整 maxResults 為 20
+        res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=20&printType=books", timeout=5)
         results = []
         if res.status_code == 200:
             data = res.json()
@@ -251,11 +244,9 @@ def search_google_keyword(keyword):
                 isbn = ""
                 for ident in v.get('industryIdentifiers', []):
                     if ident['type'] == 'ISBN_13': isbn = ident['identifier']
-                
                 img = v.get('imageLinks', {})
                 cover = img.get('thumbnail') or ""
                 if cover.startswith("http://"): cover = cover.replace("http://", "https://")
-
                 results.append({
                     "source": "Google",
                     "title": v.get('title'),
@@ -315,15 +306,13 @@ def add_book():
             y = request.form.get('year')
             m = request.form.get('month')
             cat_id = request.form.get('category')
-            
-            # 🔥 修正：確保 ISBN 從表單獲取
             isbn_val = request.form.get('isbn') 
 
             new_book = Book(
                 title=request.form.get('title'),
                 author=request.form.get('author'),
                 publisher=request.form.get('publisher'),
-                isbn=isbn_val, # 使用修正後的 ISBN
+                isbn=isbn_val, 
                 year=int(y) if y and y.isdigit() else None,
                 month=int(m) if m and m.isdigit() else None,
                 category_id=int(cat_id) if cat_id and cat_id.isdigit() else None,
@@ -373,13 +362,18 @@ def edit_book(book_id):
             try: book.added_date = datetime.datetime.strptime(d, '%Y-%m-%d').date()
             except: pass
 
-        if 'cover_file' in request.files:
-            file = request.files['cover_file']
-            if file and allowed_file(file.filename):
-                fname = f"{uuid.uuid4().hex}.{file.filename.rsplit('.', 1)[1].lower()}"
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
-                book.cover_url = url_for('static', filename=f'covers/{fname}')
-        elif request.form.get('cover_url'): book.cover_url = request.form.get('cover_url')
+        # 🔥 修復編輯時圖片無法儲存的邏輯
+        # 邏輯：優先檢查是否有檔案上傳 -> 若無，則檢查是否有網址文字 -> 若有網址文字(包含空字串代表清空)，則更新
+        file = request.files.get('cover_file')
+        if file and file.filename and allowed_file(file.filename):
+            fname = f"{uuid.uuid4().hex}.{file.filename.rsplit('.', 1)[1].lower()}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], fname))
+            book.cover_url = url_for('static', filename=f'covers/{fname}')
+        else:
+            # 如果沒有上傳新檔案，檢查是否更新了 URL
+            new_url = request.form.get('cover_url')
+            if new_url is not None: # 只要欄位存在就更新，允許使用者清空圖片
+                book.cover_url = new_url
 
         db.session.commit()
         return redirect(url_for('index'))
@@ -422,7 +416,15 @@ def lookup_isbn(isbn):
     if res := scrape_google(clean): return jsonify(res)
     return jsonify({"error": "Not Found"}), 404
 
-# 🔥 搜尋 API：同時搜尋 Google, 博客來, MOMO
+# 🔥 新增：檢查書名是否存在 API
+@app.route('/api/check_title')
+def check_title():
+    title = request.args.get('title', '').strip()
+    if not title: return jsonify({'exists': False})
+    # 使用 ilike 忽略大小寫
+    exists = Book.query.filter(Book.title.ilike(title)).first() is not None
+    return jsonify({'exists': exists})
+
 @app.route('/api/search_keyword/<keyword>')
 def search_keyword(keyword):
     if not keyword: return jsonify([]), 400
@@ -475,18 +477,14 @@ def import_books():
                         cat = Category.query.filter_by(name=cname).first()
                         if not cat: cat = Category(name=cname); db.session.add(cat); db.session.flush()
                         cat_id = cat.id
-                
-                # 簡單轉換
                 def g(k): v=row.get(k); return str(v).strip() if str(v)!='nan' else ''
                 def gi(k): 
                     try: return int(float(row.get(k))) 
                     except: return None
-                
                 ad = datetime.date.today()
                 if d := row.get('入庫日期'):
                     try: ad = pd.to_datetime(d).date()
                     except: pass
-
                 db.session.add(Book(
                     title=g('書名'), author=g('作者'), publisher=g('出版社'), isbn=g('ISBN'),
                     year=gi('出版年'), month=gi('出版月'), category_id=cat_id,
@@ -501,7 +499,7 @@ def import_books():
     return render_template('import_books.html')
 
 def keep_alive():
-    url = "https://library-system-9ti8.onrender.com/" # 請確認此網址
+    url = "https://library-system-9ti8.onrender.com/" 
     while True:
         time.sleep(600)
         try: requests.get(url)
