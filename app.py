@@ -78,17 +78,42 @@ class Book(db.Model):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- 爬蟲工具 ---
+# --- 更新版爬蟲工具 ---
 def safe_get(url):
     try:
+        # 1. 隨機切換瀏覽器指紋，降低被認出是同一隻爬蟲的機率
+        browser_type = random.choice(["chrome110", "edge101", "safari15_3"])
+        
+        # 2. 隨機 User-Agent (更真實的標頭)
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
+        ]
+        
+        print(f"正在爬取: {url} 使用: {browser_type}") # 在 Log 中印出，方便除錯
+
         response = crequests.get(
-            url, impersonate="chrome120", 
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            timeout=10
+            url, 
+            impersonate=browser_type, 
+            headers={
+                "User-Agent": random.choice(user_agents),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Referer": "https://www.google.com/", # 偽裝成從 Google 點進去的
+                "Cache-Control": "no-cache"
+            },
+            timeout=8 # 稍微拉長一點點等待時間
         )
+        
+        # 如果狀態碼不是 200 (成功)，印出錯誤
+        if response.status_code != 200:
+            print(f"❌ 被阻擋 [{response.status_code}]: {url}")
+            return None
+            
         return response
     except Exception as e:
-        print(f"Fetch Error: {url} - {e}")
+        print(f"⚠️ Fetch Error: {url} - {e}")
         return None
 
 # --- ISBN 爬蟲 (維持不變) ---
