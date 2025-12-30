@@ -13,13 +13,13 @@ import pandas as pd
 import io
 import urllib3
 from curl_cffi import requests as crequests
-from concurrent.futures import ThreadPoolExecutor, as_completed # 🔥 新增：用於並行搜尋
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# --- 資料庫與設定 ---
+# --- 資料庫與設定 (維持不變) ---
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///library.db')
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -33,7 +33,7 @@ if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 
 db = SQLAlchemy(app)
 
-# --- 模型 ---
+# --- 模型 (維持不變) ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
@@ -81,7 +81,6 @@ def allowed_file(filename):
 # --- 爬蟲工具 ---
 def safe_get(url):
     try:
-        # impersonate="chrome120" 可以模擬真實瀏覽器，繞過部分反爬蟲
         response = crequests.get(
             url, impersonate="chrome120", 
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
@@ -92,7 +91,7 @@ def safe_get(url):
         print(f"Fetch Error: {url} - {e}")
         return None
 
-# --- ISBN 爬蟲 (單本書詳細資料) ---
+# --- ISBN 爬蟲 (維持不變) ---
 def scrape_momo(isbn):
     url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
     try:
@@ -176,7 +175,7 @@ def scrape_google(isbn):
     except: pass
     return None
 
-# --- 🔥 關鍵字搜尋 (改進版：多來源 + Readmoo) ---
+# --- 🔥 關鍵字搜尋 (新增誠品、墊腳石) ---
 
 def search_momo_keyword(keyword):
     try:
@@ -234,20 +233,16 @@ def search_books_keyword(keyword):
 
 def search_readmoo_keyword(keyword):
     try:
-        # 🔥 新增 Readmoo 搜尋
         res = safe_get(f"https://readmoo.com/search/keyword?q={keyword}")
         if not res: return []
         soup = BeautifulSoup(res.text, 'html.parser')
         results = []
-        # Readmoo 列表結構
         for item in soup.select('.item-info')[:10]:
             try:
                 title_tag = item.select_one('h4 a')
                 if not title_tag: continue
                 title = title_tag.text.strip()
-                link = title_tag['href']
                 
-                # 嘗試抓圖片 (稍微麻煩，因為圖片通常在上一層 container)
                 cover = ""
                 parent = item.find_parent('div', class_='thumbnail')
                 if parent:
@@ -268,6 +263,79 @@ def search_readmoo_keyword(keyword):
             except: continue
         return results
     except Exception: return []
+
+# 🔥 新增：誠品書局爬蟲
+def search_eslite_keyword(keyword):
+    try:
+        # 誠品網頁結構較複雜，使用 curl_cffi 模擬瀏覽器抓取 HTML
+        res = safe_get(f"https://www.eslite.com/search?q={keyword}")
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        results = []
+        # 誠品的結構通常是 .product-item
+        # 注意：若網站改版 class 可能會變
+        items = soup.select('.product-item') or soup.select('.item-card')
+        for item in items[:10]:
+            try:
+                title_tag = item.select_one('.product-name') or item.select_one('h3')
+                if not title_tag: continue
+                title = title_tag.text.strip()
+                
+                img = item.select_one('img')
+                cover = img.get('src') if img else ""
+                
+                author_tag = item.select_one('.product-author')
+                author = author_tag.text.strip() if author_tag else ""
+                
+                publisher_tag = item.select_one('.product-manufacturer')
+                publisher = publisher_tag.text.strip() if publisher_tag else "誠品來源"
+
+                results.append({
+                    "source": "誠品",
+                    "title": title,
+                    "author": author,
+                    "publisher": publisher,
+                    "cover_url": cover,
+                    "isbn": "", "description": ""
+                })
+            except: continue
+        return results
+    except Exception as e: 
+        print(f"Eslite Error: {e}")
+        return []
+
+# 🔥 新增：墊腳石書局爬蟲 (利用其內部 API，速度快)
+def search_stepstone_keyword(keyword):
+    try:
+        # 墊腳石使用 Cyberbiz/91APP 架構，直接打搜尋 API 比較準
+        # 這裡模擬他們的 API 呼叫格式
+        api_url = f"https://www.tcsb.com.tw/v2/official/SalePageCategory/0?keyword={keyword}&sortDirection=DESC&sortType=CurPrice&pagseSize=10&pageIndex=0"
+        res = safe_get(api_url)
+        if not res: return []
+        
+        data = res.json()
+        results = []
+        if 'Data' in data and 'SalePageList' in data['Data']:
+            for item in data['Data']['SalePageList']:
+                try:
+                    title = item.get('Title', '')
+                    img = item.get('ImageLink', '')
+                    if not img.startswith('http'): img = "https:" + img
+                    
+                    results.append({
+                        "source": "墊腳石",
+                        "title": title,
+                        "author": "詳見內頁", # 墊腳石 API 列表頁通常不回傳作者欄位
+                        "publisher": "墊腳石來源",
+                        "cover_url": img,
+                        "isbn": "", "description": ""
+                    })
+                except: continue
+        return results
+    except Exception as e:
+        print(f"Stepstone Error: {e}")
+        return []
+
 
 def search_google_keyword(keyword):
     try:
@@ -295,13 +363,10 @@ def search_google_keyword(keyword):
         return results
     except Exception: return []
 
-# --- 輔助：字串正規化 (Fuzzy Matching 核心) ---
+# --- 輔助：字串正規化 ---
 def normalize_string(s):
     if not s: return ""
-    # 1. 轉小寫
     s = s.lower()
-    # 2. 移除所有標點符號、括號、空格，只保留 CJK字元(4e00-9fff)、英文字母、數字
-    # 這會把 "書名 (7)" 變成 "書名7"
     s = re.sub(r'[^\u4e00-\u9fa5a-z0-9]', '', s)
     return s
 
@@ -459,16 +524,14 @@ def lookup_isbn(isbn):
     if res := scrape_google(clean): return jsonify(res)
     return jsonify({"error": "Not Found"}), 404
 
-# 🔥 核心：Fuzzy Check API
+# 🔥 Check Title API
 @app.route('/api/check_title')
 def check_title():
     raw_title = request.args.get('title', '').strip()
     if not raw_title: return jsonify({'exists': False, 'match': None})
     
     target = normalize_string(raw_title)
-    
-    # 這裡取出所有書名做比對 (若書庫非常巨大 > 5000本，建議改用 SQL 配合)
-    all_books = db.session.query(Book.title).all() # returns list of tuples
+    all_books = db.session.query(Book.title).all()
     
     for (db_title,) in all_books:
         if normalize_string(db_title) == target:
@@ -476,19 +539,21 @@ def check_title():
             
     return jsonify({'exists': False})
 
-# 🔥 核心：並行搜尋 API
+# 🔥 核心：六大來源並行搜尋
 @app.route('/api/search_keyword/<keyword>')
 def search_keyword(keyword):
     if not keyword: return jsonify([]), 400
     
     results = []
-    # 使用 ThreadPoolExecutor 同時跑 4 個爬蟲
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    # 增加 max_workers 到 6 以應付更多來源
+    with ThreadPoolExecutor(max_workers=6) as executor:
         futures = [
             executor.submit(search_google_keyword, keyword),
             executor.submit(search_books_keyword, keyword),
             executor.submit(search_momo_keyword, keyword),
-            executor.submit(search_readmoo_keyword, keyword)
+            executor.submit(search_readmoo_keyword, keyword),
+            executor.submit(search_eslite_keyword, keyword),  # 新增
+            executor.submit(search_stepstone_keyword, keyword) # 新增
         ]
         
         for future in as_completed(futures):
