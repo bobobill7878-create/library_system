@@ -39,12 +39,12 @@
                         {% endif %}
 
                         <div class="mb-4 p-3 bg-light border rounded">
-                            <label class="form-label fw-bold">關鍵字搜尋 (Google / 博客來 / MOMO / Readmoo)</label>
+                            <label class="form-label fw-bold">全網搜尋 (Google / 博客來 / MOMO / Readmoo / 誠品 / 墊腳石)</label>
                             <div class="input-group">
                                 <input type="text" id="keyword" class="form-control" placeholder="輸入書名搜尋...">
                                 <button type="button" class="btn btn-secondary" onclick="searchTitleModal()">搜尋</button>
                             </div>
-                            <small class="text-muted">支援多來源搜尋，速度可能稍慢請見諒。</small>
+                            <small class="text-muted">已加入誠品與墊腳石來源，資料更完整。</small>
                         </div>
 
                         <form id="addBookForm" method="POST" enctype="multipart/form-data">
@@ -219,7 +219,7 @@
             const kw = document.getElementById('keyword').value;
             if(!kw) { alert("請輸入關鍵字"); return; }
             const resDiv = document.getElementById('search-results');
-            resDiv.innerHTML = "<div class='text-center p-3'>⏳ 正在從 Google, 博客來, MOMO, Readmoo 搜尋...</div>";
+            resDiv.innerHTML = "<div class='text-center p-3'>⏳ 正在從 Google, 博客來, MOMO, Readmoo, 誠品, 墊腳石 搜尋...</div>";
             new bootstrap.Modal(document.getElementById('searchModal')).show();
             fetch(`/api/search_keyword/${kw}`)
                 .then(r => r.json())
@@ -229,9 +229,13 @@
                     data.forEach(item => {
                         const jsonItem = JSON.stringify(item).replace(/"/g, '&quot;');
                         let badgeClass = "bg-secondary";
+                        
+                        // 🔥 設定不同來源的顏色標籤
                         if(item.source === "博客來") badgeClass = "bg-success";
-                        if(item.source === "MOMO") badgeClass = "bg-danger";
-                        if(item.source === "Readmoo") badgeClass = "bg-info text-dark";
+                        else if(item.source === "MOMO") badgeClass = "bg-danger";
+                        else if(item.source === "Readmoo") badgeClass = "bg-info text-dark";
+                        else if(item.source === "誠品") badgeClass = "bg-warning text-dark"; // 誠品用黃色/卡其
+                        else if(item.source === "墊腳石") badgeClass = "bg-primary"; // 墊腳石用藍色
                         
                         html += `
                             <button type="button" class="list-group-item list-group-item-action" onclick="selectBook(${jsonItem})">
