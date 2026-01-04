@@ -1,39 +1,46 @@
 import threading
 import time
 import requests
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
-import datetime
 import os
 import uuid
 import re
-from bs4 import BeautifulSoup
-import pandas as pd
+import datetime
 import io
-import urllib3
-from curl_cffi import requests as crequests
+import random
+from urllib.parse import quote, unquote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
+from werkzeug.utils import secure_filename
+from bs4 import BeautifulSoup
+import pandas as pd
+
+# 🔥 引入偽裝瀏覽器套件 (解決博客來/MOMO 擋爬蟲問題)
+from curl_cffi import requests as crequests
 
 app = Flask(__name__)
 
-# --- 資料庫與設定 (維持不變) ---
+# --- 1. 設定與資料庫 ---
+# 支援 Render 的 PostgreSQL，本地則使用 SQLite
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///library.db')
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 圖片上傳設定
 UPLOAD_FOLDER = 'static/covers'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 db = SQLAlchemy(app)
 
-# --- 模型 (維持不變) ---
+# --- 2. 資料庫模型 ---
 class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
@@ -43,7 +50,7 @@ class Category(db.Model):
 class Book(db.Model):
     __tablename__ = 'books'
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
     author = db.Column(db.String(100), nullable=False)
     publisher = db.Column(db.String(100), nullable=True)
     isbn = db.Column(db.String(20), nullable=True)
@@ -75,309 +82,74 @@ class Book(db.Model):
             'added_date': self.added_date.strftime('%Y-%m-%d') if self.added_date else ''
         }
 
+# --- 3. 輔助函式 ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- 更新版爬蟲工具 ---
+def normalize_string(s):
+    """
+    模糊比對用的正規化函式：
+    移除標點符號、空格、括號，只保留中英文字母與數字。
+    例如: "書名 (7)" -> "書名7"
+    """
+    if not s: return ""
+    s = s.lower()
+    # 保留 CJK漢字, A-Z, 0-9
+    s = re.sub(r'[^\u4e00-\u9fa5a-z0-9]', '', s)
+    return s
+
 def safe_get(url):
+    """
+    使用 curl_cffi 偽裝成真實瀏覽器發送請求。
+    隨機切換指紋以降低被阻擋機率。
+    """
     try:
-        # 1. 隨機切換瀏覽器指紋，降低被認出是同一隻爬蟲的機率
         browser_type = random.choice(["chrome110", "edge101", "safari15_3"])
-        
-        # 2. 隨機 User-Agent (更真實的標頭)
         user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         ]
         
-        print(f"正在爬取: {url} 使用: {browser_type}") # 在 Log 中印出，方便除錯
-
+        # Timeout 設定為 6 秒，避免拖慢整體搜尋
         response = crequests.get(
             url, 
             impersonate=browser_type, 
             headers={
                 "User-Agent": random.choice(user_agents),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Referer": "https://www.google.com/", # 偽裝成從 Google 點進去的
-                "Cache-Control": "no-cache"
+                "Referer": "https://www.google.com/"
             },
-            timeout=8 # 稍微拉長一點點等待時間
+            timeout=6 
         )
-        
-        # 如果狀態碼不是 200 (成功)，印出錯誤
-        if response.status_code != 200:
-            print(f"❌ 被阻擋 [{response.status_code}]: {url}")
-            return None
-            
         return response
     except Exception as e:
-        print(f"⚠️ Fetch Error: {url} - {e}")
+        print(f"⚠️ Fetch Error ({url}): {e}")
         return None
 
-# --- ISBN 爬蟲 (維持不變) ---
-def scrape_momo(isbn):
-    url = f"https://m.momoshop.com.tw/search.momo?searchKeyword={isbn}"
+# --- 4. 搜尋邏輯 (API 與 爬蟲) ---
+
+def search_google_api(keyword):
+    """【推薦】Google Books 官方 API (穩定、不擋IP)"""
+    results = []
     try:
-        res = safe_get(url)
-        if not res or "驗證碼" in res.text: return None
-        soup = BeautifulSoup(res.text, 'html.parser')
-        item = soup.select_one('.goodsItem')
-        if not item: return None
-        title = item.select_one('.prdName').text.strip()
-        detail_link = item.select_one('a')['href']
-        author, publisher, year, month, cover, desc = "", "", None, None, "", ""
-        if detail_link:
-            if not detail_link.startswith("http"): detail_link = "https://m.momoshop.com.tw" + detail_link
-            if d_res := safe_get(detail_link):
-                d_soup = BeautifulSoup(d_res.text, 'html.parser')
-                img = d_soup.select_one('.swiper-slide img')
-                if img: cover = img.get('src')
-                content = d_soup.select_one('.Area02') or d_soup.select_one('.attributesTable')
-                if content:
-                    txt = content.get_text()
-                    if m := re.search(r'出版社[：:]\s*(.+)', txt): publisher = m.group(1).strip()
-                    if m := re.search(r'作者[：:]\s*(.+)', txt): author = m.group(1).strip()
-                    if m := re.search(r'出版日[：:]\s*(\d{4})[\/-](\d{1,2})', txt): year, month = m.group(1), m.group(2)
-                d_area = d_soup.select_one('.Area03')
-                if d_area: desc = d_area.get_text(strip=True)[:500]
-        return {"source": "MOMO", "success": True, "title": title, "author": author, "publisher": publisher, "year": year, "month": month, "cover_url": cover, "description": desc}
-    except: return None
-
-def scrape_sanmin(isbn):
-    try:
-        res = safe_get(f"https://www.sanmin.com.tw/search/index?ct=all&k={isbn}")
-        if not res: return None
-        soup = BeautifulSoup(res.text, 'html.parser')
-        item = soup.select_one('.SearchItem')
-        if not item: return None
-        title = item.select_one('.ProdName').text.strip()
-        author = (item.select_one('.Author') or {}).text or ""
-        publisher = (item.select_one('.Publisher') or {}).text or ""
-        year, month = None, None
-        if dt := item.select_one('.PubDate'):
-            if m := re.search(r'(\d{4})[\/-](\d{1,2})', dt.text): year, month = m.group(1), m.group(2)
-        img = item.select_one('img')
-        return {"source": "三民", "success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": img.get('src') if img else "", "description": ""}
-    except: return None
-
-def scrape_books(isbn):
-    try:
-        res = safe_get(f"https://search.books.com.tw/search/query/key/{isbn}/cat/all")
-        if not res: return None
-        soup = BeautifulSoup(res.text, 'html.parser')
-        item = soup.select_one('.table-search-tbody .table-td') or soup.select_one('li.item')
-        if not item: return None
-        title_tag = item.select_one('h4 a') or item.select_one('h3 a')
-        if not title_tag: return None
-        title = title_tag.get('title') or title_tag.text.strip()
-        author = (item.select_one('a[rel="go_author"]') or {}).text or ""
-        if not author and "作者：" in item.text: author = item.text.split("作者：")[1].split("出版社")[0].strip()
-        publisher = (item.select_one('a[rel="go_publisher"]') or {}).text or ""
-        year, month = None, None
-        if m := re.search(r'(\d{4})[\/-](\d{1,2})', item.text): year, month = m.group(1), m.group(2)
-        img = item.select_one('img')
-        cover = img.get('data-src') or img.get('src') or ""
-        if cover and not cover.startswith("http"): cover = "https:" + cover
-        return {"source": "博客來", "success": True, "title": title, "author": author.strip(), "publisher": publisher.strip(), "year": year, "month": month, "cover_url": cover, "description": ""}
-    except: return None
-
-def scrape_google(isbn):
-    try:
-        res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}", timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get('totalItems', 0) > 0:
-                v = data['items'][0]['volumeInfo']
-                pd = v.get('publishedDate', '')
-                y = pd.split('-')[0] if pd else None
-                m = pd.split('-')[1] if len(pd.split('-')) > 1 else None
-                img = v.get('imageLinks', {})
-                cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
-                if cover.startswith("http://"): cover = cover.replace("http://", "https://")
-                return {"source": "Google", "success": True, "title": v.get('title'), "author": ", ".join(v.get('authors', [])), "publisher": v.get('publisher', ''), "year": y, "month": m, "cover_url": cover, "description": v.get('description', '')}
-    except: pass
-    return None
-
-# --- 🔥 關鍵字搜尋 (新增誠品、墊腳石) ---
-
-def search_momo_keyword(keyword):
-    try:
-        res = safe_get(f"https://m.momoshop.com.tw/search.momo?searchKeyword={keyword}")
-        if not res: return []
-        soup = BeautifulSoup(res.text, 'html.parser')
-        results = []
-        for item in soup.select('.goodsItem')[:10]: 
-            try:
-                title = item.select_one('.prdName').text.strip()
-                link = item.select_one('a')['href']
-                if not link.startswith("http"): link = "https://m.momoshop.com.tw" + link
-                img = item.select_one('img')
-                cover = img.get('src') if img else ""
-                results.append({
-                    "source": "MOMO",
-                    "title": title,
-                    "author": "詳見內頁",
-                    "publisher": "MOMO來源",
-                    "cover_url": cover,
-                    "isbn": "", "description": ""
-                })
-            except: continue
-        return results
-    except Exception: return []
-
-def search_books_keyword(keyword):
-    try:
-        res = safe_get(f"https://search.books.com.tw/search/query/key/{keyword}/cat/all")
-        if not res: return []
-        soup = BeautifulSoup(res.text, 'html.parser')
-        results = []
-        items = soup.select('.table-search-tbody tr') or soup.select('li.item')
-        for item in items[:10]:
-            try:
-                title_tag = item.select_one('h4 a') or item.select_one('h3 a')
-                if not title_tag: continue
-                title = title_tag.get('title') or title_tag.text.strip()
-                img = item.select_one('img')
-                cover = img.get('data-src') or img.get('src') or ""
-                if cover and not cover.startswith('http'): cover = 'https:' + cover
-                author = (item.select_one('a[rel="go_author"]') or {}).text or ""
-                publisher = (item.select_one('a[rel="go_publisher"]') or {}).text or ""
-                results.append({
-                    "source": "博客來",
-                    "title": title,
-                    "author": author.strip(),
-                    "publisher": publisher.strip(),
-                    "cover_url": cover,
-                    "isbn": "", "description": ""
-                })
-            except: continue
-        return results
-    except Exception: return []
-
-def search_readmoo_keyword(keyword):
-    try:
-        res = safe_get(f"https://readmoo.com/search/keyword?q={keyword}")
-        if not res: return []
-        soup = BeautifulSoup(res.text, 'html.parser')
-        results = []
-        for item in soup.select('.item-info')[:10]:
-            try:
-                title_tag = item.select_one('h4 a')
-                if not title_tag: continue
-                title = title_tag.text.strip()
-                
-                cover = ""
-                parent = item.find_parent('div', class_='thumbnail')
-                if parent:
-                    img = parent.select_one('img')
-                    if img: cover = img.get('data-original') or img.get('src')
-                
-                author_tag = item.select_one('.author a')
-                author = author_tag.text.strip() if author_tag else ""
-                
-                results.append({
-                    "source": "Readmoo",
-                    "title": title,
-                    "author": author,
-                    "publisher": "Readmoo來源",
-                    "cover_url": cover if cover else "",
-                    "isbn": "", "description": ""
-                })
-            except: continue
-        return results
-    except Exception: return []
-
-# 🔥 新增：誠品書局爬蟲
-def search_eslite_keyword(keyword):
-    try:
-        # 誠品網頁結構較複雜，使用 curl_cffi 模擬瀏覽器抓取 HTML
-        res = safe_get(f"https://www.eslite.com/search?q={keyword}")
-        if not res: return []
-        soup = BeautifulSoup(res.text, 'html.parser')
-        results = []
-        # 誠品的結構通常是 .product-item
-        # 注意：若網站改版 class 可能會變
-        items = soup.select('.product-item') or soup.select('.item-card')
-        for item in items[:10]:
-            try:
-                title_tag = item.select_one('.product-name') or item.select_one('h3')
-                if not title_tag: continue
-                title = title_tag.text.strip()
-                
-                img = item.select_one('img')
-                cover = img.get('src') if img else ""
-                
-                author_tag = item.select_one('.product-author')
-                author = author_tag.text.strip() if author_tag else ""
-                
-                publisher_tag = item.select_one('.product-manufacturer')
-                publisher = publisher_tag.text.strip() if publisher_tag else "誠品來源"
-
-                results.append({
-                    "source": "誠品",
-                    "title": title,
-                    "author": author,
-                    "publisher": publisher,
-                    "cover_url": cover,
-                    "isbn": "", "description": ""
-                })
-            except: continue
-        return results
-    except Exception as e: 
-        print(f"Eslite Error: {e}")
-        return []
-
-# 🔥 新增：墊腳石書局爬蟲 (利用其內部 API，速度快)
-def search_stepstone_keyword(keyword):
-    try:
-        # 墊腳石使用 Cyberbiz/91APP 架構，直接打搜尋 API 比較準
-        # 這裡模擬他們的 API 呼叫格式
-        api_url = f"https://www.tcsb.com.tw/v2/official/SalePageCategory/0?keyword={keyword}&sortDirection=DESC&sortType=CurPrice&pagseSize=10&pageIndex=0"
-        res = safe_get(api_url)
-        if not res: return []
-        
-        data = res.json()
-        results = []
-        if 'Data' in data and 'SalePageList' in data['Data']:
-            for item in data['Data']['SalePageList']:
-                try:
-                    title = item.get('Title', '')
-                    img = item.get('ImageLink', '')
-                    if not img.startswith('http'): img = "https:" + img
-                    
-                    results.append({
-                        "source": "墊腳石",
-                        "title": title,
-                        "author": "詳見內頁", # 墊腳石 API 列表頁通常不回傳作者欄位
-                        "publisher": "墊腳石來源",
-                        "cover_url": img,
-                        "isbn": "", "description": ""
-                    })
-                except: continue
-        return results
-    except Exception as e:
-        print(f"Stepstone Error: {e}")
-        return []
-
-
-def search_google_keyword(keyword):
-    try:
-        res = requests.get(f"https://www.googleapis.com/books/v1/volumes?q={keyword}&maxResults=20&printType=books", timeout=5)
-        results = []
-        if res.status_code == 200:
-            data = res.json()
+        # maxResults=10, 限制繁體中文
+        api_url = f"https://www.googleapis.com/books/v1/volumes?q={quote(keyword)}&langRestrict=zh-TW&maxResults=10&printType=books"
+        # 官方 API 用一般 requests 即可
+        r = requests.get(api_url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
             for item in data.get('items', []):
                 v = item.get('volumeInfo', {})
                 isbn = ""
                 for ident in v.get('industryIdentifiers', []):
                     if ident['type'] == 'ISBN_13': isbn = ident['identifier']
+                
                 img = v.get('imageLinks', {})
-                cover = img.get('thumbnail') or ""
+                cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
                 if cover.startswith("http://"): cover = cover.replace("http://", "https://")
+
                 results.append({
-                    "source": "Google",
+                    "source": "GoogleAPI",
                     "title": v.get('title'),
                     "author": ", ".join(v.get('authors', [])),
                     "publisher": v.get('publisher', ''),
@@ -385,47 +157,188 @@ def search_google_keyword(keyword):
                     "isbn": isbn,
                     "description": v.get('description', '')
                 })
+    except Exception as e:
+        print(f"GoogleAPI Error: {e}")
+    return results
+
+def scrape_sanmin(keyword):
+    """三民書局 (較好爬)"""
+    results = []
+    try:
+        url = f"https://www.sanmin.com.tw/search/index/?ct=K&q={quote(keyword)}"
+        res = safe_get(url)
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 三民結構可能會變，嘗試多種選擇器
+        items = soup.select('.result_list .item') or soup.select('.product-list > div')
+        
+        for item in items[:5]:
+            try:
+                title_tag = item.select_one('h3 a') or item.select_one('.prod_name a')
+                if not title_tag: continue
+                
+                img_tag = item.select_one('img')
+                cover = img_tag.get('src') if img_tag else ""
+                
+                txt = item.text
+                author = txt.split('作者：')[1].split('\n')[0].strip() if '作者：' in txt else ""
+                publisher = txt.split('出版社：')[1].split('\n')[0].strip() if '出版社：' in txt else ""
+
+                results.append({
+                    "source": "三民",
+                    "title": title_tag.text.strip(),
+                    "author": author,
+                    "publisher": publisher,
+                    "cover_url": cover,
+                    "isbn": "",
+                    "description": ""
+                })
+            except: continue
+    except: pass
+    return results
+
+def scrape_stepstone(keyword):
+    """墊腳石 (API 模式)"""
+    results = []
+    try:
+        url = f"https://www.tcsb.com.tw/v2/Search?q={quote(keyword)}&shopId=14"
+        res = safe_get(url)
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        items = soup.select('.box-shadow-product-item')
+        
+        for item in items[:5]:
+            try:
+                title = item.select_one('.b-text-overflow').text.strip()
+                img = item.select_one('img')['src']
+                results.append({
+                    "source": "墊腳石",
+                    "title": title,
+                    "author": "",
+                    "publisher": "墊腳石來源",
+                    "cover_url": img,
+                    "isbn": "", "description": ""
+                })
+            except: continue
+    except: pass
+    return results
+
+def scrape_books_com(keyword):
+    """博客來 (容易被擋，作為輔助)"""
+    results = []
+    try:
+        url = f"https://search.books.com.tw/search/query/key/{quote(keyword)}/cat/all"
+        res = safe_get(url)
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        items = soup.select('.table-search-tbody tr') or soup.select('li.item')
+        
+        for item in items[:5]:
+            try:
+                title_tag = item.select_one('h4 a') or item.select_one('h3 a')
+                if not title_tag: continue
+                img = item.select_one('img')
+                cover = img.get('data-src') or img.get('src') or ""
+                if cover and not cover.startswith('http'): cover = 'https:' + cover
+                
+                author_tag = item.select_one('a[rel="go_author"]')
+                author = author_tag.text if author_tag else ""
+                
+                results.append({
+                    "source": "博客來",
+                    "title": title_tag.get('title') or title_tag.text.strip(),
+                    "author": author,
+                    "publisher": "",
+                    "cover_url": cover,
+                    "isbn": "", "description": ""
+                })
+            except: continue
+    except: pass
+    return results
+
+def scrape_eslite(keyword):
+    """誠品 (輔助)"""
+    try:
+        res = safe_get(f"https://www.eslite.com/search?q={quote(keyword)}")
+        if not res: return []
+        soup = BeautifulSoup(res.text, 'html.parser')
+        results = []
+        items = soup.select('.product-item') or soup.select('.item-card')
+        for item in items[:5]:
+            try:
+                title_tag = item.select_one('.product-name') or item.select_one('h3')
+                if not title_tag: continue
+                img = item.select_one('img')
+                cover = img.get('src') if img else ""
+                results.append({
+                    "source": "誠品",
+                    "title": title_tag.text.strip(),
+                    "author": "",
+                    "publisher": "誠品來源",
+                    "cover_url": cover,
+                    "isbn": "", "description": ""
+                })
+            except: continue
         return results
-    except Exception: return []
+    except: return []
 
-# --- 輔助：字串正規化 ---
-def normalize_string(s):
-    if not s: return ""
-    s = s.lower()
-    s = re.sub(r'[^\u4e00-\u9fa5a-z0-9]', '', s)
-    return s
+# --- 5. 路由設定 ---
 
-# --- Routes ---
 @app.route('/init_db')
 def init_db():
-    db.create_all()
-    if not Category.query.first():
-        for name in ['小說','原文小說', '漫畫', '原文漫畫', '畫冊', '寫真', '設定集']: db.session.add(Category(name=name))
-        db.session.commit()
-    return "初始化完成"
+    try:
+        db.create_all()
+        if not Category.query.first():
+            for name in ['小說','原文小說', '漫畫', '原文漫畫', '畫冊', '寫真', '設定集']: 
+                db.session.add(Category(name=name))
+            db.session.commit()
+        return "初始化完成"
+    except Exception as e: return f"失敗: {e}"
 
 @app.route('/')
 def index():
     search_field = request.args.get('search_field', 'all') 
     query = request.args.get('query', '').strip()  
+    
+    # Checkbox 多選
     selected_cats = request.args.getlist('category_id') 
     selected_status = request.args.getlist('status_filter')
 
     books_query = Book.query
 
     if query:
-        base_filter = (Book.title.ilike(f'%{query}%') | Book.author.ilike(f'%{query}%') | Book.publisher.ilike(f'%{query}%') | Book.series.ilike(f'%{query}%') | Book.isbn.ilike(f'%{query}%') | Book.tags.ilike(f'%{query}%'))
+        base_filter = (
+            Book.title.ilike(f'%{query}%') | 
+            Book.author.ilike(f'%{query}%') | 
+            Book.publisher.ilike(f'%{query}%') | 
+            Book.series.ilike(f'%{query}%') | 
+            Book.isbn.ilike(f'%{query}%') |
+            Book.tags.ilike(f'%{query}%')
+        )
         if search_field == 'title': books_query = books_query.filter(Book.title.ilike(f'%{query}%'))
         elif search_field == 'author': books_query = books_query.filter(Book.author.ilike(f'%{query}%'))
         elif search_field == 'isbn': books_query = books_query.filter(Book.isbn.ilike(f'%{query}%'))
+        elif search_field == 'publisher': books_query = books_query.filter(Book.publisher.ilike(f'%{query}%'))
         else: books_query = books_query.filter(base_filter)
 
     if selected_cats:
-        books_query = books_query.filter(Book.category_id.in_([int(c) for c in selected_cats if c.isdigit()]))
+        cat_ids = [int(c) for c in selected_cats if c.isdigit()]
+        if cat_ids: books_query = books_query.filter(Book.category_id.in_(cat_ids))
+        
     if selected_status:
         books_query = books_query.filter(Book.status.in_(selected_status))
     
-    return render_template('index.html', books=books_query.order_by(Book.added_date.desc(), Book.id.desc()).all(), categories=Category.query.all(), current_query=query, current_search_field=search_field, selected_cats=selected_cats, selected_status=selected_status)
+    all_books = books_query.order_by(Book.added_date.desc(), Book.id.desc()).all()
+    all_categories = Category.query.all()
+    
+    return render_template('index.html', 
+                           books=all_books, 
+                           categories=all_categories, 
+                           current_query=query, 
+                           current_search_field=search_field,
+                           selected_cats=selected_cats, 
+                           selected_status=selected_status)
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_book():
@@ -536,59 +449,84 @@ def delete_category(category_id):
     db.session.commit()
     return redirect(url_for('manage_categories'))
 
+# --- API 路由 ---
+
 @app.route('/api/book/<int:book_id>')
-def get_book_data(book_id): return jsonify(Book.query.get_or_404(book_id).to_dict())
+def get_book_data(book_id): 
+    return jsonify(Book.query.get_or_404(book_id).to_dict())
 
 @app.route('/api/lookup_isbn/<isbn>')
 def lookup_isbn(isbn):
+    """主要使用 Google API 查詢 ISBN，因為它最穩定"""
     clean = isbn.replace('-', '').strip()
     if not clean: return jsonify({"error": "Empty"}), 400
-    if res := scrape_momo(clean): return jsonify(res)
-    if res := scrape_sanmin(clean): return jsonify(res)
-    if res := scrape_books(clean): return jsonify(res)
-    if res := scrape_google(clean): return jsonify(res)
+    
+    # 優先使用 Google API
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{clean}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('totalItems', 0) > 0:
+                v = data['items'][0]['volumeInfo']
+                img = v.get('imageLinks', {})
+                cover = img.get('thumbnail') or img.get('smallThumbnail') or ""
+                if cover.startswith("http://"): cover = cover.replace("http://", "https://")
+                
+                return jsonify({
+                    "source": "GoogleAPI",
+                    "title": v.get('title'),
+                    "author": ", ".join(v.get('authors', [])),
+                    "publisher": v.get('publisher', ''),
+                    "year": v.get('publishedDate', '')[:4],
+                    "cover_url": cover,
+                    "description": v.get('description', '')
+                })
+    except: pass
+    
+    # 如果 Google 沒找到，可以嘗試其他來源 (這裡省略以保持回應速度)
     return jsonify({"error": "Not Found"}), 404
 
-# 🔥 Check Title API
 @app.route('/api/check_title')
 def check_title():
+    """模糊書名查重"""
     raw_title = request.args.get('title', '').strip()
-    if not raw_title: return jsonify({'exists': False, 'match': None})
+    if not raw_title: return jsonify({'exists': False})
     
     target = normalize_string(raw_title)
-    all_books = db.session.query(Book.title).all()
+    all_titles = db.session.query(Book.title).all()
     
-    for (db_title,) in all_books:
-        if normalize_string(db_title) == target:
-            return jsonify({'exists': True, 'match': db_title})
-            
+    for (db_t,) in all_titles:
+        if normalize_string(db_t) == target:
+            return jsonify({'exists': True, 'match': db_t})
     return jsonify({'exists': False})
 
-# 🔥 核心：六大來源並行搜尋
 @app.route('/api/search_keyword/<keyword>')
-def search_keyword(keyword):
+def search_keyword_api(keyword):
+    """並行搜尋 API"""
     if not keyword: return jsonify([]), 400
     
-    results = []
-    # 增加 max_workers 到 6 以應付更多來源
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    final_results = []
+    # 使用 4 個執行緒，包含最穩定的 GoogleAPI
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
-            executor.submit(search_google_keyword, keyword),
-            executor.submit(search_books_keyword, keyword),
-            executor.submit(search_momo_keyword, keyword),
-            executor.submit(search_readmoo_keyword, keyword),
-            executor.submit(search_eslite_keyword, keyword),  # 新增
-            executor.submit(search_stepstone_keyword, keyword) # 新增
+            executor.submit(search_google_api, keyword),  # Google Official (最重要)
+            executor.submit(scrape_sanmin, keyword),      # 三民 (次穩)
+            executor.submit(scrape_stepstone, keyword),   # 墊腳石
+            executor.submit(scrape_books_com, keyword),   # 博客來 (輔助)
+            executor.submit(scrape_eslite, keyword)       # 誠品 (輔助)
         ]
         
         for future in as_completed(futures):
             try:
-                data = future.result()
-                if data: results.extend(data)
-            except Exception as e:
-                print(f"Search thread error: {e}")
+                # 設定 Timeout 8秒，避免拖累
+                data = future.result(timeout=8)
+                if data: final_results.extend(data)
+            except Exception: pass
+            
+    return jsonify(final_results)
 
-    return jsonify(results)
+# --- 儀表板與匯出入 ---
 
 @app.route('/dashboard')
 def dashboard():
@@ -634,14 +572,17 @@ def import_books():
                         cat = Category.query.filter_by(name=cname).first()
                         if not cat: cat = Category(name=cname); db.session.add(cat); db.session.flush()
                         cat_id = cat.id
+                
                 def g(k): v=row.get(k); return str(v).strip() if str(v)!='nan' else ''
                 def gi(k): 
                     try: return int(float(row.get(k))) 
                     except: return None
+                
                 ad = datetime.date.today()
                 if d := row.get('入庫日期'):
                     try: ad = pd.to_datetime(d).date()
                     except: pass
+
                 db.session.add(Book(
                     title=g('書名'), author=g('作者'), publisher=g('出版社'), isbn=g('ISBN'),
                     year=gi('出版年'), month=gi('出版月'), category_id=cat_id,
@@ -655,12 +596,19 @@ def import_books():
         except Exception as e: return render_template('import_books.html', error=str(e))
     return render_template('import_books.html')
 
+# --- Render 防止休眠機制 ---
 def keep_alive():
-    url = "https://library-system-9ti8.onrender.com/" 
+    # 請替換為您的 Render URL
+    url = "https://your-app-name.onrender.com/" 
     while True:
-        time.sleep(600)
-        try: requests.get(url)
+        time.sleep(600) # 每10分鐘喚醒
+        try:
+            if "your-app-name" not in url: return # 若沒設定 URL 則不執行
+            requests.get(url)
         except: pass
-if os.environ.get('RENDER'): threading.Thread(target=keep_alive, daemon=True).start()
 
-if __name__ == '__main__': app.run(debug=True)
+if os.environ.get('RENDER'):
+    threading.Thread(target=keep_alive, daemon=True).start()
+
+if __name__ == '__main__':
+    app.run(debug=True)
