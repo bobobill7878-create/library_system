@@ -13,6 +13,10 @@
             <input type="text" name="isbn" class="form-control" value="{{ book.isbn }}" required>
         </div>
         <div class="mb-3">
+            <label class="form-label">圖片網址 (URL)</label>
+            <input type="url" name="image_url" class="form-control" placeholder="例如: https://example.com/image.jpg" value="{{ book.image_url if book else '' }}">
+        </div>
+        <div class="mb-3">
             <label class="form-label">書名</label>
             <input type="text" name="title" class="form-control" value="{{ book.title }}" required>
         </div>
@@ -40,4 +44,5 @@
         </div>
     </form>
 </body>
+
 </html>
