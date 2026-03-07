@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>新增圖書</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h2 class="mb-4">➕ 新增圖書</h2>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="card p-4 shadow-sm">
+        <div class="mb-3">
+            <label class="form-label">ISBN (國際標準書號)*</label>
+            <input type="text" name="isbn" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">書名*</label>
+            <input type="text" name="title" class="form-control" required>
+        </div>
+        <div class="row mb-3">
+            <div class="col">
+                <label class="form-label">作者</label>
+                <input type="text" name="author" class="form-control">
+            </div>
+            <div class="col">
+                <label class="form-label">出版社</label>
+                <input type="text" name="publisher" class="form-control">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">儲存位置</label>
+            <input type="text" name="location" class="form-control" placeholder="例如: A區-3層">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">圖書簡介</label>
+            <textarea name="summary" class="form-control" rows="3"></textarea>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-success">儲存圖書</button>
+            <a href="/" class="btn btn-secondary">取消返回</a>
+        </div>
+    </form>
+</body>
+</html>
