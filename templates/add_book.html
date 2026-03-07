@@ -5,7 +5,7 @@
     <title>新增圖書</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="container mt-4">
+<body class="container mt-4 mb-5">
     <h2 class="mb-4">➕ 新增圖書</h2>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -17,41 +17,99 @@
     {% endwith %}
 
     <form method="POST" class="card p-4 shadow-sm">
-        <div class="mb-3">
-            <label class="form-label">ISBN (國際標準書號)*</label>
-            <input type="text" name="isbn" class="form-control" required>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">圖片網址 (URL)</label>
-            <input type="url" name="image_url" class="form-control" placeholder="例如: https://example.com/image.jpg" value="{{ book.image_url if book else '' }}">
-        </div>
-        <div class="mb-3">
-            <label class="form-label">書名*</label>
-            <input type="text" name="title" class="form-control" required>
-        </div>
+        
         <div class="row mb-3">
-            <div class="col">
+            <div class="col-md-4">
+                <label class="form-label text-primary fw-bold">ISBN (國際標準書號)*</label>
+                <input type="text" name="isbn" class="form-control" placeholder="例如: 9789861234567" required>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label text-primary fw-bold">書名*</label>
+                <input type="text" name="title" class="form-control" required>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
                 <label class="form-label">作者</label>
                 <input type="text" name="author" class="form-control">
             </div>
-            <div class="col">
+            <div class="col-md-6">
                 <label class="form-label">出版社</label>
                 <input type="text" name="publisher" class="form-control">
             </div>
         </div>
-        <div class="mb-3">
-            <label class="form-label">儲存位置</label>
-            <input type="text" name="location" class="form-control" placeholder="例如: A區-3層">
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">分類</label>
+                <input type="text" name="category" class="form-control" placeholder="例如: 文學、科學">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">叢書名</label>
+                <input type="text" name="series" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">集數</label>
+                <input type="text" name="volume" class="form-control" placeholder="例如: 1, 上, 特裝版">
+            </div>
         </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">出版年 (西元)</label>
+                <input type="number" name="publish_year" class="form-control" placeholder="例如: 2023">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">出版月</label>
+                <input type="number" name="publish_month" class="form-control" min="1" max="12" placeholder="1-12">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">狀態</label>
+                <select name="status" class="form-select">
+                    <option value="在館" selected>在館</option>
+                    <option value="借出">借出</option>
+                    <option value="遺失">遺失</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">評分 (0.0 - 5.0)</label>
+                <input type="number" name="rating" class="form-control" step="0.1" min="0" max="5" placeholder="例如: 4.5">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">儲存位置</label>
+                <input type="text" name="location" class="form-control" placeholder="例如: A區-3層">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">標籤 (Tags)</label>
+                <input type="text" name="tags" class="form-control" placeholder="請用逗號分隔，例如: 熱門,推薦">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">圖片網址 (URL)</label>
+                <input type="url" name="image_url" class="form-control" placeholder="例如: https://example.com/image.jpg">
+            </div>
+        </div>
+
         <div class="mb-3">
-            <label class="form-label">圖書簡介</label>
+            <label class="form-label">圖書簡介 (大綱)</label>
             <textarea name="summary" class="form-control" rows="3"></textarea>
         </div>
-        <div>
-            <button type="submit" class="btn btn-success">儲存圖書</button>
-            <a href="/" class="btn btn-secondary">取消返回</a>
+        
+        <div class="mb-4">
+            <label class="form-label">備註 (Notes)</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="內部管理備註..."></textarea>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success px-4">儲存圖書</button>
+            <a href="/" class="btn btn-secondary px-4">取消返回</a>
         </div>
     </form>
 </body>
-
 </html>
