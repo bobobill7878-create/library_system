@@ -5,44 +5,101 @@
     <title>編輯圖書</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="container mt-4">
+<body class="container mt-4 mb-5">
     <h2 class="mb-4">✏️ 編輯圖書</h2>
+    
     <form method="POST" class="card p-4 shadow-sm">
-        <div class="mb-3">
-            <label class="form-label">ISBN</label>
-            <input type="text" name="isbn" class="form-control" value="{{ book.isbn }}" required>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">ISBN*</label>
+                <input type="text" name="isbn" class="form-control" value="{{ book.isbn or '' }}">
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">書名*</label>
+                <input type="text" name="title" class="form-control" value="{{ book.title or '' }}" required>
+            </div>
         </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">作者</label>
+                <input type="text" name="author" class="form-control" value="{{ book.author or '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">出版社</label>
+                <input type="text" name="publisher" class="form-control" value="{{ book.publisher or '' }}">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">分類</label>
+                <input type="text" name="category" class="form-control" value="{{ book.category or '' }}" placeholder="例如: 文學、科學">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">叢書</label>
+                <input type="text" name="series" class="form-control" value="{{ book.series or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">集數</label>
+                <input type="text" name="volume" class="form-control" value="{{ book.volume or '' }}">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">出版年</label>
+                <input type="number" name="publish_year" class="form-control" value="{{ book.publish_year or '' }}" placeholder="YYYY">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">出版月</label>
+                <input type="number" name="publish_month" class="form-control" min="1" max="12" value="{{ book.publish_month or '' }}" placeholder="MM">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">評分 (0-5)</label>
+                <input type="number" step="0.1" name="rating" class="form-control" value="{{ book.rating or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">狀態</label>
+                <select name="status" class="form-select">
+                    <option value="在館" {% if book.status == '在館' %}selected{% endif %}>在館</option>
+                    <option value="借出" {% if book.status == '借出' %}selected{% endif %}>借出</option>
+                    <option value="遺失" {% if book.status == '遺失' %}selected{% endif %}>遺失</option>
+                    <option value="預約中" {% if book.status == '預約中' %}selected{% endif %}>預約中</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">儲存位置</label>
+                <input type="text" name="location" class="form-control" value="{{ book.location or '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">標籤</label>
+                <input type="text" name="tags" class="form-control" value="{{ book.tags or '' }}" placeholder="用逗號分隔，如: 熱門,推薦">
+            </div>
+        </div>
+
         <div class="mb-3">
             <label class="form-label">圖片網址 (URL)</label>
-            <input type="url" name="image_url" class="form-control" placeholder="例如: https://example.com/image.jpg" value="{{ book.image_url if book else '' }}">
+            <input type="url" name="image_url" class="form-control" placeholder="例如: https://example.com/image.jpg" value="{{ book.image_url or '' }}">
         </div>
+
         <div class="mb-3">
-            <label class="form-label">書名</label>
-            <input type="text" name="title" class="form-control" value="{{ book.title }}" required>
+            <label class="form-label">大綱</label>
+            <textarea name="summary" class="form-control" rows="3">{{ book.summary or '' }}</textarea>
         </div>
-        <div class="row mb-3">
-            <div class="col">
-                <label class="form-label">作者</label>
-                <input type="text" name="author" class="form-control" value="{{ book.author }}">
-            </div>
-            <div class="col">
-                <label class="form-label">出版社</label>
-                <input type="text" name="publisher" class="form-control" value="{{ book.publisher }}">
-            </div>
-        </div>
+
         <div class="mb-3">
-            <label class="form-label">儲存位置</label>
-            <input type="text" name="location" class="form-control" value="{{ book.location }}">
+            <label class="form-label">備註</label>
+            <textarea name="notes" class="form-control" rows="2">{{ book.notes or '' }}</textarea>
         </div>
-        <div class="mb-3">
-            <label class="form-label">圖書簡介</label>
-            <textarea name="summary" class="form-control" rows="3">{{ book.summary }}</textarea>
-        </div>
-        <div>
-            <button type="submit" class="btn btn-primary">更新資料</button>
-            <a href="/" class="btn btn-secondary">取消返回</a>
+
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary px-4">更新資料</button>
+            <a href="/" class="btn btn-secondary px-4 ms-2">取消返回</a>
         </div>
     </form>
 </body>
-
 </html>
