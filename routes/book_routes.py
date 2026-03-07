@@ -58,9 +58,19 @@ def edit_book(id):
 
 @book_bp.route('/export')
 def export_excel():
+    import os
+    
+    # 從資料庫抓取所有書籍
     books = Book.query.all()
-    filepath = export_books_to_excel(books)
-    return send_file(f"../{filepath}", as_attachment=True, download_name="library_export.xlsx")
+    
+    # 指定儲存到 Linux/Render 的安全暫存目錄
+    filepath = os.path.join('/tmp', 'library_export.xlsx')
+    
+    # 呼叫 utils.py 的匯出函數，並指定我們寫好的安全路徑
+    export_books_to_excel(books, filepath)
+    
+    # 傳送檔案給使用者下載
+    return send_file(filepath, as_attachment=True, download_name="library_export.xlsx")
 
 @book_bp.route('/import', methods=['POST'])
 def import_excel():
@@ -87,4 +97,5 @@ def import_excel():
     else:
         flash('僅支援 Excel 檔案 (.xlsx, .xls)', 'danger')
         
+
     return redirect(url_for('book_bp.index'))
