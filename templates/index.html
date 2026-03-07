@@ -34,10 +34,10 @@
         <button type="submit" class="btn btn-warning">上傳並匯入</button>
     </form>
 
-    <table class="table table-striped table-hover">
+    <table class="table table-striped table-hover align-middle">
         <thead class="table-dark">
             <tr>
-                <th>ISBN</th>
+                <th>封面</th> <th>ISBN</th>
                 <th>書名</th>
                 <th>作者</th>
                 <th>出版社</th>
@@ -48,6 +48,13 @@
         <tbody>
             {% for book in books %}
             <tr>
+                <td>
+                    {% if book.image_url %}
+                        <img src="{{ book.image_url }}" alt="封面" style="max-width: 60px; max-height: 90px; object-fit: cover; border-radius: 4px;" onerror="this.src='https://via.placeholder.com/60x90?text=No+Image'">
+                    {% else %}
+                        <img src="https://via.placeholder.com/60x90?text=No+Image" alt="無封面" style="max-width: 60px; border-radius: 4px;">
+                    {% endif %}
+                </td>
                 <td>{{ book.isbn }}</td>
                 <td>{{ book.title }}</td>
                 <td>{{ book.author }}</td>
@@ -58,9 +65,10 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="text-center">目前沒有找到符合的圖書。</td></tr>
+            <tr><td colspan="7" class="text-center">目前沒有找到符合的圖書。</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </body>
+
 </html>
