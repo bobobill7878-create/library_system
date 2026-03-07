@@ -3,8 +3,13 @@ from database import db, Book
 
 def export_books_to_excel(books, filepath="library_export.xlsx"):
     data = [{
-        'ISBN': b.isbn, '書名': b.title, '作者': b.author, 
-        '出版社': b.publisher, '儲存位置': b.location, '簡介': b.summary
+        'ISBN': b.isbn, 
+        '書名': b.title, 
+        '作者': b.author, 
+        '出版社': b.publisher, 
+        '儲存位置': b.location, 
+        '簡介': b.summary,
+        '圖片網址': b.image_url  # 🌟 新增：將資料庫的圖片網址匯出至 Excel
     } for b in books]
     
     df = pd.DataFrame(data)
@@ -14,7 +19,8 @@ def export_books_to_excel(books, filepath="library_export.xlsx"):
 def import_books_from_excel(filepath):
     try:
         df = pd.read_excel(filepath)
-        expected_cols = ['ISBN', '書名', '作者', '出版社', '儲存位置', '簡介']
+        # 🌟 新增 '圖片網址' 到預期欄位清單中
+        expected_cols = ['ISBN', '書名', '作者', '出版社', '儲存位置', '簡介', '圖片網址']
         
         # 檢查欄位是否正確
         for col in expected_cols:
@@ -32,7 +38,8 @@ def import_books_from_excel(filepath):
                     author=str(row['作者']) if pd.notna(row['作者']) else "",
                     publisher=str(row['出版社']) if pd.notna(row['出版社']) else "",
                     location=str(row['儲存位置']) if pd.notna(row['儲存位置']) else "",
-                    summary=str(row['簡介']) if pd.notna(row['簡介']) else ""
+                    summary=str(row['簡介']) if pd.notna(row['簡介']) else "",
+                    image_url=str(row['圖片網址']) if pd.notna(row['圖片網址']) else ""  # 🌟 新增：讀取 Excel 的圖片網址並存入資料庫
                 )
                 db.session.add(new_book)
                 imported_count += 1
